@@ -4,10 +4,11 @@ import csv
 import shutil
 
 class NmapModule(BaseModule):
-    def run(self, targets):
-        if not self.check_tool("nmap"):
-            return "Nmap not found"
+    def __init__(self, config, output_dir, db_path):
+        super().__init__(config, output_dir, db_path)
+        self.required_tool = "nmap"
 
+    def run(self, targets):
         results = []
         for target in targets:
             domain = target.replace("https://", "").replace("http://", "").split("/")[0]
@@ -28,8 +29,5 @@ class NmapModule(BaseModule):
         return results
 
     def parse_results(self, data):
-        normalized_file = os.path.join(self.normalized_output_dir, "nmap_hosts.csv")
-        with open(normalized_file, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            for item in data:
-                writer.writerow([item.get('domain'), item.get('output')])
+        # Placeholder for nmap XML parsing to count findings (ports)
+        self.findings_count = len(data) # Simple count of hosts for now

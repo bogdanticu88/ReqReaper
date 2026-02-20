@@ -4,14 +4,14 @@ import csv
 import json
 
 class FfufModule(BaseModule):
-    def run(self, targets, wordlist="/usr/share/wordlists/dirb/common.txt"):
-        if not self.check_tool("ffuf"):
-            return "ffuf not found"
+    def __init__(self, config, output_dir, db_path):
+        super().__init__(config, output_dir, db_path)
+        self.required_tool = "ffuf"
 
+    def run(self, targets, wordlist="/usr/share/wordlists/dirb/common.txt"):
         results = []
         for target in targets:
             output_file = os.path.join(self.raw_output_dir, f"ffuf_{target.replace('/', '_')}.json")
-            
             cmd = [
                 "ffuf",
                 "-w", wordlist,
@@ -35,8 +35,14 @@ class FfufModule(BaseModule):
         return results
 
     def parse_results(self, data):
-        normalized_file = os.path.join(self.normalized_output_dir, "fuzzing_findings.csv")
-        with open(normalized_file, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            for item in data:
-                writer.writerow([item.get('url'), item.get('status'), item.get('length')])
+        self.findings_count = len(data)
+        normalized = []
+        for item in data:
+            normalized.append({
+                "url": item.get('url'),
+                "method": "GET",
+                "source_tool": "ffuf",
+                "status_code": item.get('status')
+            })
+        if self.dm:
+            self.dm.add_data("endpoints", normalized)

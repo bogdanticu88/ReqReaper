@@ -4,15 +4,14 @@ import csv
 import json
 
 class StressK6Module(BaseModule):
-    def run(self, targets):
-        if not self.check_tool("k6"):
-            return "k6 not found"
+    def __init__(self, config, output_dir, db_path):
+        super().__init__(config, output_dir, db_path)
+        self.required_tool = "k6"
 
+    def run(self, targets):
         results = []
         for target in targets:
             output_file = os.path.join(self.raw_output_dir, f"k6_{target.replace('/', '_')}.json")
-            
-            # Simple k6 script generation
             script_content = f"""
 import http from 'k6/http';
 import {{ sleep }} from 'k6';
@@ -39,9 +38,13 @@ export default function () {{
         return results
 
     def parse_results(self, data):
-        normalized_file = os.path.join(self.normalized_output_dir, "load_test_results.csv")
-        with open(normalized_file, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(["Target", "Output File"])
-            for item in data:
-                writer.writerow([item['target'], item['output']])
+        self.findings_count = len(data)
+        normalized = []
+        for item in data:
+            normalized.append({
+                "target": item['target'],
+                "rps": 0,
+                "p95_latency": 0
+            })
+        if self.dm:
+            self.dm.add_data("load_results", normalized)

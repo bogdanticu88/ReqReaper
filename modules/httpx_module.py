@@ -4,10 +4,11 @@ import csv
 import json
 
 class HttpxModule(BaseModule):
-    def run(self, targets):
-        if not self.check_tool("httpx"):
-            return "Httpx not found"
+    def __init__(self, config, output_dir, db_path):
+        super().__init__(config, output_dir, db_path)
+        self.required_tool = "httpx"
 
+    def run(self, targets):
         results = []
         for target in targets:
             output_file = os.path.join(self.raw_output_dir, f"httpx_{target.replace('/', '_')}.json")
@@ -44,7 +45,7 @@ class HttpxModule(BaseModule):
         for item in data:
             normalized.append({
                 "url": item.get('url'),
-                "method": "GET", # httpx default in this mode
+                "method": "GET",
                 "source_tool": "httpx",
                 "status_code": item.get('status_code')
             })
@@ -52,5 +53,6 @@ class HttpxModule(BaseModule):
 
     def parse_results(self, data):
         normalized_data = self.normalize_data(data)
+        self.findings_count = len(normalized_data)
         if self.dm:
             self.dm.add_data("endpoints", normalized_data)

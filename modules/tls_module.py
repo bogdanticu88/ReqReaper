@@ -4,10 +4,11 @@ import csv
 import subprocess
 
 class TLSModule(BaseModule):
-    def run(self, targets):
-        if not self.check_tool("testssl.sh"):
-            return "testssl.sh not found"
+    def __init__(self, config, output_dir, db_path):
+        super().__init__(config, output_dir, db_path)
+        self.required_tool = "testssl.sh"
 
+    def run(self, targets):
         results = []
         for target in targets:
             domain = target.replace("https://", "").split("/")[0]
@@ -19,16 +20,20 @@ class TLSModule(BaseModule):
                 domain
             ]
             self.run_command(cmd, "testssl.sh")
-            
-            # Simple result capture
             results.append({"domain": domain, "output": output_file})
             
         self.parse_results(results)
         return results
 
     def parse_results(self, data):
-        normalized_file = os.path.join(self.normalized_output_dir, "tls_findings.csv")
-        with open(normalized_file, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            for item in data:
-                writer.writerow([item.get('domain'), item.get('output')])
+        self.findings_count = len(data)
+        normalized = []
+        for item in data:
+            normalized.append({
+                "run_id": "", # Added by DataManager
+                "host": item['domain'],
+                "finding": f"TLS scan report: {item['output']}",
+                "severity": "info"
+            })
+        if self.dm:
+            self.dm.add_data("tls_findings", normalized)

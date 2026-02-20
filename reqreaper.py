@@ -7,6 +7,7 @@ import sqlite3
 import csv
 import shutil
 import uuid
+import time
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
@@ -332,8 +333,7 @@ def main():
             sys.exit(4)
 
     if not tools_ok:
-         logger.error("Critical Error: Tools missing.")
-         sys.exit(4)
+         if not args.quiet: logger.warning("[*] Some required tools are missing. Proceeding with available modules.")
          
     # Setup Output
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -390,33 +390,36 @@ def main():
         modules_to_run.append(("Discovery:HTTPX", mod_instances["Discovery:HTTPX"]))
         modules_to_run.append(("Discovery:Nmap", mod_instances["Discovery:Nmap"]))
     else:
-        skipped_modules.append(("Discovery", "Disabled in config"))
+        skipped_modules.append(("Discovery:HTTPX", "Disabled in config"))
+        skipped_modules.append(("Discovery:Nmap", "Disabled in config"))
         
     if config['modules']['vulnerability']['enabled']:
         modules_to_run.append(("Vulnerability:Nuclei", mod_instances["Vulnerability:Nuclei"]))
         modules_to_run.append(("Vulnerability:TLS", mod_instances["Vulnerability:TLS"]))
         modules_to_run.append(("Vulnerability:ZAP", mod_instances["Vulnerability:ZAP"]))
     else:
-        skipped_modules.append(("Vulnerability", "Disabled in config"))
+        skipped_modules.append(("Vulnerability:Nuclei", "Disabled in config"))
+        skipped_modules.append(("Vulnerability:TLS", "Disabled in config"))
+        skipped_modules.append(("Vulnerability:ZAP", "Disabled in config"))
 
-    if args.enable_fuzz:
-        modules_to_run.append(("Fuzzing:Ffuf", mod_instances["Fuzzing:Ffuf"]))
-        modules_to_run.append(("Fuzzing:Kiterunner", mod_instances["Fuzzing:Kiterunner"]))
-    elif args.full and not args.safe:
+    if args.enable_fuzz or (args.full and not args.safe):
         modules_to_run.append(("Fuzzing:Ffuf", mod_instances["Fuzzing:Ffuf"]))
         modules_to_run.append(("Fuzzing:Kiterunner", mod_instances["Fuzzing:Kiterunner"]))
     else:
-        skipped_modules.append(("Fuzzing", "Flag not provided"))
+        skipped_modules.append(("Fuzzing:Ffuf", "Flag not provided"))
+        skipped_modules.append(("Fuzzing:Kiterunner", "Flag not provided"))
 
     if args.enable_sqli or (args.full and not args.safe):
         modules_to_run.append(("Injection:SQLMap", mod_instances["Injection:SQLMap"]))
     else:
-        skipped_modules.append(("Injection", "Flag not provided"))
+        skipped_modules.append(("Injection:SQLMap", "Flag not provided"))
         
     if args.enable_load:
          modules_to_run.append(("Load:K6", mod_instances["Load:K6"]))
     else:
-        skipped_modules.append(("Load", "Flag not provided"))
+        skipped_modules.append(("Load:K6", "Flag not provided"))
+
+    execution_results = []
 
     with Progress(
         SpinnerColumn(),
@@ -426,12 +429,43 @@ def main():
         disable=args.quiet
     ) as progress:
         for name, module in modules_to_run:
+            if not module.is_available():
+                reason = f"Tool '{module.required_tool}' not found"
+                skipped_modules.append((name, reason))
+                if not args.quiet: logger.warning(f"[*] Skipping {name}: {reason}")
+                execution_results.append({
+                    "name": name,
+                    "status": "SKIP",
+                    "findings": 0,
+                    "duration": "0s",
+                    "notes": reason
+                })
+                continue
+
             task_id = progress.add_task(description=f"[*] Executing {name}...", total=None)
+            start_time = time.time()
             try:
                 module.run(valid_targets)
+                duration = time.time() - start_time
+                module.duration = f"{duration:.2f}s"
                 progress.update(task_id, description=f"[green][+] {name} completed[/]")
+                execution_results.append({
+                    "name": name,
+                    "status": "RUN",
+                    "findings": module.findings_count,
+                    "duration": module.duration,
+                    "notes": "-"
+                })
             except Exception as e:
+                duration = time.time() - start_time
                 progress.update(task_id, description=f"[red][!] {name} failed: {e}[/]")
+                execution_results.append({
+                    "name": name,
+                    "status": "FAIL",
+                    "findings": 0,
+                    "duration": f"{duration:.2f}s",
+                    "notes": str(e)
+                })
                 
     # Final CSV Export
     if not args.quiet: console.print("[*] Synchronizing database to CSV...")
@@ -461,20 +495,31 @@ def main():
             sev_table.add_row(f"[{color}]{sev.upper()}[/]", str(count))
         console.print(sev_table)
     else:
-        console.print("[*] No security findings recorded.")
+        if not args.quiet: console.print("[*] No security findings recorded.")
 
-    # Module Status Table
-    status_table = Table(title="Module Status", box=None)
-    status_table.add_column("Module", style="cyan")
-    status_table.add_column("Status")
-    status_table.add_column("Reason", style="dim")
+    # Detailed Execution Summary Table
+    res_table = Table(title="Module Execution Detail", box=None)
+    res_table.add_column("Module", style="cyan")
+    res_table.add_column("Status")
+    res_table.add_column("Findings", justify="right")
+    res_table.add_column("Duration", justify="right")
+    res_table.add_column("Notes", style="dim")
 
-    for name, _ in modules_to_run:
-        status_table.add_row(name, "[green]RUN[/]", "-")
+    for res in execution_results:
+        status_color = "green" if res['status'] == "RUN" else "yellow" if res['status'] == "SKIP" else "red"
+        res_table.add_row(
+            res['name'], 
+            f"[{status_color}]{res['status']}[/]", 
+            str(res['findings']), 
+            res['duration'], 
+            res['notes']
+        )
+    
     for name, reason in skipped_modules:
-        status_table.add_row(name, "[yellow]SKIP[/]", reason)
-        
-    console.print(status_table)
+        if not any(r['name'] == name for r in execution_results):
+            res_table.add_row(name, "[yellow]SKIP[/]", "0", "0s", reason)
+
+    console.print(res_table)
     console.print(f"\n[bold green][+] ReqReaper session finished.[/]\n")
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import subprocess
 import shutil
 import json
 import os
+import time
 
 class BaseModule(ABC):
     def __init__(self, config, output_dir, db_path):
@@ -12,11 +13,16 @@ class BaseModule(ABC):
         self.dm = None # Will be injected by orchestrator
         self.raw_output_dir = os.path.join(output_dir, "raw")
         self.normalized_output_dir = os.path.join(output_dir, "normalized")
+        self.required_tool = None # To be defined by subclasses
+        self.findings_count = 0
+        self.duration = 0
         os.makedirs(self.raw_output_dir, exist_ok=True)
         os.makedirs(self.normalized_output_dir, exist_ok=True)
 
-    def check_tool(self, tool_name):
-        return shutil.which(tool_name) is not None
+    def is_available(self):
+        if not self.required_tool:
+            return True
+        return shutil.which(self.required_tool) is not None
 
     def run_command(self, cmd, tool_name):
         try:

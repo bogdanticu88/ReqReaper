@@ -4,6 +4,10 @@ import json
 import requests
 
 class OpenApiModule(BaseModule):
+    def __init__(self, config, output_dir, db_path):
+        super().__init__(config, output_dir, db_path)
+        self.required_tool = None # Native Python
+
     def run(self, url=None, file_path=None):
         if not url and not file_path:
             return "No OpenAPI source provided"
@@ -47,5 +51,6 @@ class OpenApiModule(BaseModule):
                 "source_tool": "openapi",
                 "status_code": 0
             })
+        self.findings_count = len(normalized)
         if self.dm:
             self.dm.add_data("endpoints", normalized)

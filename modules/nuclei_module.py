@@ -4,10 +4,11 @@ import csv
 import json
 
 class NucleiModule(BaseModule):
-    def run(self, targets):
-        if not self.check_tool("nuclei"):
-            return "Nuclei not found"
+    def __init__(self, config, output_dir, db_path):
+        super().__init__(config, output_dir, db_path)
+        self.required_tool = "nuclei"
 
+    def run(self, targets):
         results = []
         for target in targets:
             output_file = os.path.join(self.raw_output_dir, f"nuclei_{target.replace('/', '_')}.json")
@@ -44,5 +45,6 @@ class NucleiModule(BaseModule):
                 "evidence_path": item.get('template-id', 'N/A'),
                 "confidence": "high"
             })
+        self.findings_count = len(normalized)
         if self.dm:
             self.dm.add_data("findings", normalized)
