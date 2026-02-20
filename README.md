@@ -1,12 +1,17 @@
 # ReqReaper
 
-ReqReaper is a modular orchestration framework for API security testing, designed to automate the execution of standard red-team tools and normalize their output for analysis.
+ReqReaper is a modular orchestration framework for API security testing, designed
+to automate the execution of standard red-team tools and normalize their output
+for analysis.
 
-by Bogdan Ticu
+By Bogdan Ticu
 
 ## Current Status
 
-ReqReaper provides a core orchestration engine and several functional modules for reconnaissance, vulnerability scanning, and fuzzing.
+ReqReaper provides a core orchestration engine and several functional modules for
+reconnaissance, vulnerability scanning, and fuzzing. It is built to streamline the
+workflow of API security assessments by wrapping disparate tools into a unified
+execution and data model.
 
 - **Reconnaissance:** `httpx`, `nmap`
 - **Vulnerability Scanning:** `nuclei`, `testssl.sh`, `zap-cli`
@@ -15,22 +20,28 @@ ReqReaper provides a core orchestration engine and several functional modules fo
 - **Load Testing:** `k6`
 - **API Specific:** `OpenAPI` parsing
 
-For a detailed list of implemented features and planned updates, see [ROADMAP.md](ROADMAP.md).
+For a detailed list of implemented features and planned updates, see the
+[ROADMAP.md](ROADMAP.md) file.
 
 ## Architecture
 
-- **Orchestrator:** Python-based engine that manages module execution, allowlist enforcement, and artifact generation.
-- **Module System:** Abstracted plugin system where each module handles tool execution, raw output capture, and CSV normalization.
+- **Orchestrator:** Python-based engine that manages module execution,
+  allowlist enforcement, and artifact generation.
+- **Module System:** Abstracted plugin system where each module handles tool
+  execution, raw output capture, and CSV normalization.
 - **Data Persistence:**
   - **SQLite:** Centralized database (`reqreaper.db`) for findings and requests.
   - **CSV:** Normalized data exports for each module.
-  - **Raw:** Unmodified output from all external tools.
+  - **Raw:** Unmodified output from all external tools stored for audit.
 
 ## Known Limitations
 
-- **Database Integration:** Current module implementations primarily focus on CSV normalization; deep per-request storage is in progress.
-- **Reporting:** HTML report provides a high-level execution summary; detailed findings are in `normalized/` CSV artifacts.
-- **Tool Dependencies:** Requires underlying tools (e.g., `httpx`, `nuclei`) to be pre-installed in the system PATH.
+- **Database Integration:** Current module implementations primarily focus on
+  CSV normalization; deep per-request storage is in progress.
+- **Reporting:** HTML report provides a high-level execution summary; detailed
+  findings are primarily available in the `normalized/` CSV artifacts.
+- **Tool Dependencies:** Requires underlying tools (e.g., `httpx`, `nuclei`) to
+  be pre-installed in the system PATH.
 
 ## Supported Environments
 
@@ -44,6 +55,7 @@ For a detailed list of implemented features and planned updates, see [ROADMAP.md
    ```bash
    pip install -r requirements.txt
    ```
+
 2. Ensure required external tools are installed:
    ```bash
    sudo apt install httpx nmap nuclei ffuf kiterunner sqlmap zaproxy k6 testssl.sh
@@ -93,7 +105,7 @@ LOW          12
 | nuclei | MEDIUM   | Information Disclosure       | https://api.example.com/        | high       |
 | nuclei | LOW      | Missing Security Header      | https://api.example.com/        | high       |
 
-Full samples can be found in `docs/sample_run/`.
+Full samples can be found in the `docs/sample_run/` directory.
 
 ### Flags
 
@@ -106,7 +118,11 @@ Full samples can be found in `docs/sample_run/`.
 - `--enable-sqli`: Explicitly enables SQL injection testing.
 - `--quiet`: Suppresses informational logs.
 - `--no-color`: Disables ANSI color output.
+- `--version`: Displays the application version.
 
 ## Legal Warning
 
-ReqReaper is for authorized security testing only. Use of this tool against targets without explicit, written permission is illegal. The developer assumes no liability for damages or legal consequences resulting from misuse of this software.
+ReqReaper is for authorized security testing only. Use of this tool against
+targets without explicit, written permission is illegal. The developer assumes
+no liability for damages or legal consequences resulting from misuse of this
+software.

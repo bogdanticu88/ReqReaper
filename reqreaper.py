@@ -8,13 +8,15 @@ import csv
 import shutil
 import uuid
 import time
+import logging
+
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.logging import RichHandler
 from jsonschema import validate, ValidationError
-import logging
 
+# Versioning
 __version__ = "0.1.0"
 
 # Import modules
@@ -34,8 +36,16 @@ from modules.stress_k6_module import StressK6Module
 CONFIG_SCHEMA = {
     "type": "object",
     "properties": {
-        "targets": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "allowed_hosts": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "targets": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string"},
+        },
+        "allowed_hosts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string"},
+        },
         "output_directory": {"type": "string"},
         "openapi_url": {"type": "string"},
         "openapi_file": {"type": "string"},
@@ -50,24 +60,30 @@ CONFIG_SCHEMA = {
                 "vulnerability": {"type": "object", "required": ["enabled"]},
                 "fuzzing": {"type": "object", "required": ["enabled"]},
                 "injection": {"type": "object", "required": ["enabled"]},
-                "stress": {"type": "object", "required": ["enabled"]}
+                "stress": {"type": "object", "required": ["enabled"]},
             },
             "required": ["discovery", "vulnerability"],
-            "additionalProperties": False
+            "additionalProperties": False,
         },
         "auth": {
             "type": "object",
             "properties": {
                 "header_name": {"type": "string"},
-                "header_value": {"type": "string"}
-            }
+                "header_value": {"type": "string"},
+            },
         },
-        "log_level": {"type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]}
+        "log_level": {
+            "type": "string",
+            "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        },
     },
-    "required": ["targets", "allowed_hosts", "modules"]
+    "required": ["targets", "allowed_hosts", "modules"],
 }
 
+
 class DataManager:
+    """Manages SQLite database operations and CSV exports."""
+
     def __init__(self, db_path, run_id, output_dir):
         self.db_path = db_path
         self.run_id = run_id
@@ -77,77 +93,112 @@ class DataManager:
         self.init_db()
 
     def init_db(self):
+        """Initializes the SQLite database with the required schema."""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
-        
-        # Consistent Schema
-        c.execute('''CREATE TABLE IF NOT EXISTS targets 
-                     (id INTEGER PRIMARY KEY, run_id TEXT, url TEXT, host TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-        
-        c.execute('''CREATE TABLE IF NOT EXISTS endpoints 
-                     (id INTEGER PRIMARY KEY, run_id TEXT, url TEXT, method TEXT, source_tool TEXT, status_code INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-        
-        c.execute('''CREATE TABLE IF NOT EXISTS requests 
-                     (id INTEGER PRIMARY KEY, run_id TEXT, method TEXT, url TEXT, status INTEGER, response_time REAL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-        
-        c.execute('''CREATE TABLE IF NOT EXISTS findings 
-                     (id INTEGER PRIMARY KEY, run_id TEXT, tool TEXT, severity TEXT, title TEXT, endpoint TEXT, evidence_path TEXT, confidence TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-        
-        c.execute('''CREATE TABLE IF NOT EXISTS tls_findings 
-                     (id INTEGER PRIMARY KEY, run_id TEXT, host TEXT, finding TEXT, severity TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-        
-        c.execute('''CREATE TABLE IF NOT EXISTS load_results 
-                     (id INTEGER PRIMARY KEY, run_id TEXT, target TEXT, rps REAL, p95_latency REAL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-        
+
+        # Consistent Schema Definition
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS targets 
+               (id INTEGER PRIMARY KEY, run_id TEXT, url TEXT, host TEXT, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+        )
+
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS endpoints 
+               (id INTEGER PRIMARY KEY, run_id TEXT, url TEXT, method TEXT, 
+                source_tool TEXT, status_code INTEGER, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+        )
+
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS requests 
+               (id INTEGER PRIMARY KEY, run_id TEXT, method TEXT, url TEXT, 
+                status INTEGER, response_time REAL, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+        )
+
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS findings 
+               (id INTEGER PRIMARY KEY, run_id TEXT, tool TEXT, severity TEXT, 
+                title TEXT, endpoint TEXT, evidence_path TEXT, confidence TEXT, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+        )
+
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS tls_findings 
+               (id INTEGER PRIMARY KEY, run_id TEXT, host TEXT, finding TEXT, 
+                severity TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+        )
+
+        c.execute(
+            """CREATE TABLE IF NOT EXISTS load_results 
+               (id INTEGER PRIMARY KEY, run_id TEXT, target TEXT, rps REAL, 
+                p95_latency REAL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
+        )
+
         conn.commit()
         conn.close()
 
     def add_data(self, table, data):
+        """Inserts multiple rows of data into a specified table."""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
-        
-        # Ensure run_id is in data
+
         for item in data:
-            item['run_id'] = self.run_id
-            keys = ', '.join(item.keys())
-            placeholders = ', '.join(['?'] * len(item))
-            c.execute(f"INSERT INTO {table} ({keys}) VALUES ({placeholders})", list(item.values()))
-            
+            item["run_id"] = self.run_id
+            keys = ", ".join(item.keys())
+            placeholders = ", ".join(["?"] * len(item))
+            query = f"INSERT INTO {table} ({keys}) VALUES ({placeholders})"
+            c.execute(query, list(item.values()))
+
         conn.commit()
         conn.close()
 
     def export_all_to_csv(self):
-        tables = ["targets", "endpoints", "requests", "findings", "tls_findings", "load_results"]
+        """Exports all database tables to individual CSV files."""
+        tables = [
+            "targets",
+            "endpoints",
+            "requests",
+            "findings",
+            "tls_findings",
+            "load_results",
+        ]
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        
+
         for table in tables:
             c.execute(f"SELECT * FROM {table} WHERE run_id = ?", (self.run_id,))
             rows = c.fetchall()
             if not rows:
                 continue
-                
+
             csv_path = os.path.join(self.normalized_dir, f"{table}.csv")
-            with open(csv_path, 'w', newline='') as f:
+            with open(csv_path, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=rows[0].keys())
                 writer.writeheader()
                 for row in rows:
                     writer.writerow(dict(row))
-                    
+
         conn.close()
 
+
 def setup_logger(console, args):
+    """Configures the logging system with rich output."""
     logging.basicConfig(
         level="ERROR" if args.quiet else "INFO",
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(console=console, rich_tracebacks=True, markup=True)]
+        handlers=[RichHandler(console=console, rich_tracebacks=True, markup=True)],
     )
     return logging.getLogger("reqreaper")
 
+
 def validate_config(config, logger):
-    # 1. Schema Validation (Required fields, types, ranges)
+    """Performs comprehensive validation of the configuration object."""
+    # 1. Schema Validation
     try:
         validate(instance=config, schema=CONFIG_SCHEMA)
     except ValidationError as e:
@@ -155,14 +206,16 @@ def validate_config(config, logger):
         logger.error(f"[bold red][!] Configuration Error at {path}:[/] {e.message}")
         return False
 
-    # 2. Host Validation (Allowlist Integrity)
-    allowed = set(config.get('allowed_hosts', []))
-    for target in config.get('targets', []):
+    # 2. Host Validation
+    allowed = set(config.get("allowed_hosts", []))
+    for target in config.get("targets", []):
         try:
-            # Basic parsing for host/IP
             host = target.split("//")[-1].split("/")[0].split(":")[0]
             if host not in allowed:
-                logger.error(f"[bold red][!] Allowlist Violation:[/] Target '{target}' (host: {host}) is not in allowed_hosts.")
+                logger.error(
+                    f"[bold red][!] Allowlist Violation:[/] Target '{target}' "
+                    f"(host: {host}) is not in allowed_hosts."
+                )
                 return False
         except Exception:
             logger.error(f"[bold red][!] Invalid Target Format:[/] '{target}'")
@@ -170,15 +223,20 @@ def validate_config(config, logger):
 
     # 3. Module Integrity
     valid_module_groups = {"discovery", "vulnerability", "fuzzing", "injection", "stress"}
-    config_modules = set(config.get('modules', {}).keys())
+    config_modules = set(config.get("modules", {}).keys())
     invalid_groups = config_modules - valid_module_groups
     if invalid_groups:
-        logger.error(f"[bold red][!] Invalid Module Groups in config:[/] {', '.join(invalid_groups)}")
+        logger.error(
+            f"[bold red][!] Invalid Module Groups in config:[/] "
+            f"{', '.join(invalid_groups)}"
+        )
         return False
 
     return True
 
+
 def preflight_tools_check(console, modules_config):
+    """Checks for the presence of required external binaries."""
     table = Table(title="Preflight Tool Availability Check")
     table.add_column("Tool", style="cyan")
     table.add_column("Status", justify="center")
@@ -186,12 +244,15 @@ def preflight_tools_check(console, modules_config):
 
     required_tools = set()
     for mod_name, mod_cfg in modules_config.items():
-        if mod_cfg.get('enabled'):
-            for tool in mod_cfg.get('tools', []):
+        if mod_cfg.get("enabled"):
+            for tool in mod_cfg.get("tools", []):
                 binary_name = tool
-                if tool == "zap": binary_name = "zap-cli"
-                elif tool == "tls": binary_name = "testssl.sh"
-                elif tool == "kiterunner": binary_name = "kr"
+                if tool == "zap":
+                    binary_name = "zap-cli"
+                elif tool == "tls":
+                    binary_name = "testssl.sh"
+                elif tool == "kiterunner":
+                    binary_name = "kr"
                 required_tools.add(binary_name)
 
     all_ok = True
@@ -202,14 +263,16 @@ def preflight_tools_check(console, modules_config):
         else:
             table.add_row(tool, "[red]MISSING[/]", "Not Found")
             all_ok = False
-            
+
     console.print(table)
     return all_ok
 
+
 def generate_report(output_dir, db_path, run_id):
+    """Generates a static HTML report from the execution findings."""
     report_path = os.path.join(output_dir, "report", "report.html")
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
-    
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -217,43 +280,57 @@ def generate_report(output_dir, db_path, run_id):
     findings = c.fetchall()
     conn.close()
 
-    html = f"""
+    html_template = """
     <!DOCTYPE html>
     <html>
     <head>
         <title>ReqReaper Security Report</title>
         <style>
-            body {{ font-family: sans-serif; background: #1a1a1a; color: #e0e0e0; }}
-            .container {{ width: 80%; margin: auto; padding: 20px; }}
-            h1 {{ color: #ff4444; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-            th, td {{ border: 1px solid #444; padding: 10px; text-align: left; }}
-            th {{ background: #333; }}
-            tr:nth-child(even) {{ background: #222; }}
+            body { font-family: sans-serif; background: #1a1a1a; color: #e0e0e0; }
+            .container { width: 80%; margin: auto; padding: 20px; }
+            h1 { color: #ff4444; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #444; padding: 10px; text-align: left; }
+            th { background: #333; }
+            tr:nth-child(even) { background: #222; }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>ReqReaper Security Assessment</h1>
             <p>Run ID: {run_id}</p>
-            <p>Generated: {datetime.datetime.now()}</p>
+            <p>Generated: {timestamp}</p>
             <h2>Findings Summary</h2>
             <table>
-                <tr><th>Tool</th><th>Severity</th><th>Title</th><th>Endpoint</th><th>Details/Evidence</th></tr>
-    """
-    
-    for f in findings:
-        html += f"<tr><td>{f['tool']}</td><td>{f['severity']}</td><td>{f['title']}</td><td>{f['endpoint']}</td><td>{f['evidence_path']}</td></tr>"
-        
-    html += """
+                <tr>
+                    <th>Tool</th>
+                    <th>Severity</th>
+                    <th>Title</th>
+                    <th>Endpoint</th>
+                    <th>Details/Evidence</th>
+                </tr>
+                {rows}
             </table>
         </div>
     </body>
     </html>
     """
-    
-    with open(report_path, 'w') as f:
-        f.write(html)
+
+    rows_html = ""
+    for f in findings:
+        rows_html += (
+            f"<tr><td>{f['tool']}</td><td>{f['severity']}</td>"
+            f"<td>{f['title']}</td><td>{f['endpoint']}</td>"
+            f"<td>{f['evidence_path']}</td></tr>"
+        )
+
+    final_html = html_template.format(
+        run_id=run_id, timestamp=datetime.datetime.now(), rows=rows_html
+    )
+
+    with open(report_path, "w") as f:
+        f.write(final_html)
+
 
 def main():
     parser = argparse.ArgumentParser(description="ReqReaper API Security Framework")
@@ -266,51 +343,51 @@ def main():
     parser.add_argument("--enable-load", action="store_true", help="Enable load testing")
     parser.add_argument("--enable-fuzz", action="store_true", help="Enable fuzzing")
     parser.add_argument("--enable-sqli", action="store_true", help="Enable SQL injection")
-    parser.add_argument("--dry-run", action="store_true", help="Safe preflight: validate config and check tools")
-    
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Safe preflight: validate config"
+    )
+
     args = parser.parse_args()
-    
+
     console = Console(no_color=args.no_color, quiet=args.quiet)
     logger = setup_logger(console, args)
-    
+
     banner(console, __version__)
-    
+
+    # 1. Initialization
     if not os.path.exists(args.config):
         logger.error(f"Configuration file '{args.config}' not found.")
         sys.exit(1)
-        
+
     try:
-        with open(args.config, 'r') as f:
+        with open(args.config, "r") as f:
             config = yaml.safe_load(f)
     except Exception as e:
         logger.error(f"Error parsing YAML: {e}")
         sys.exit(1)
 
+    # 2. Validation
     if not validate_config(config, logger):
         sys.exit(2)
 
-    tools_ok = preflight_tools_check(console, config['modules'])
-    
-    # Planned Modules (for Dry-Run display)
+    tools_ok = preflight_tools_check(console, config["modules"])
+
+    # 3. Dry-Run Logic
     planned_modules = []
     skipped_info = []
 
-    if config['modules']['discovery']['enabled']:
-        planned_modules.append("Discovery:HTTPX")
-        planned_modules.append("Discovery:Nmap")
+    if config["modules"]["discovery"]["enabled"]:
+        planned_modules.extend(["Discovery:HTTPX", "Discovery:Nmap"])
     else:
         skipped_info.append(("Discovery", "Disabled in config"))
 
-    if config['modules']['vulnerability']['enabled']:
-        planned_modules.append("Vulnerability:Nuclei")
-        planned_modules.append("Vulnerability:TLS")
-        planned_modules.append("Vulnerability:ZAP")
+    if config["modules"]["vulnerability"]["enabled"]:
+        planned_modules.extend(["Vulnerability:Nuclei", "Vulnerability:TLS", "Vulnerability:ZAP"])
     else:
         skipped_info.append(("Vulnerability", "Disabled in config"))
 
     if args.enable_fuzz or (args.full and not args.safe):
-        planned_modules.append("Fuzzing:Ffuf")
-        planned_modules.append("Fuzzing:Kiterunner")
+        planned_modules.extend(["Fuzzing:Ffuf", "Fuzzing:Kiterunner"])
     else:
         skipped_info.append(("Fuzzing", "Flag not provided"))
 
@@ -320,7 +397,7 @@ def main():
         skipped_info.append(("Injection", "Flag not provided"))
 
     if args.enable_load:
-         planned_modules.append("Load:K6")
+        planned_modules.append("Load:K6")
     else:
         skipped_info.append(("Load", "Flag not provided"))
 
@@ -334,54 +411,50 @@ def main():
             plan_table.add_row(mod, "[green]WILL RUN[/]", "-")
         for mod, reason in skipped_info:
             plan_table.add_row(mod, "[yellow]WILL SKIP[/]", reason)
-        
-        console.print(plan_table)
 
+        console.print(plan_table)
         if tools_ok:
-            console.print("\n[bold green][+] Preflight successful![/] Config is valid and tools are available.")
+            console.print("\n[bold green][+] Preflight successful![/]")
             sys.exit(0)
         else:
-            console.print("\n[bold yellow][!] Preflight warning:[/] Config is valid but some required tools are missing.")
+            console.print("\n[bold yellow][!] Preflight warning: Missing tools.[/]")
             sys.exit(4)
 
     if not tools_ok:
-         if not args.quiet: logger.warning("[*] Some required tools are missing. Proceeding with available modules.")
-         
-    # Setup Output
+        if not args.quiet:
+            logger.warning("[*] Some tools are missing. Proceeding with available.")
+
+    # 4. Execution Setup
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = str(uuid.uuid4())
     output_dir = os.path.join(config.get("output_directory", "artifacts"), f"run_{timestamp}")
     os.makedirs(output_dir, exist_ok=True)
-    
+
     db_path = os.path.join(output_dir, "reqreaper.db")
     dm = DataManager(db_path, run_id, output_dir)
-    
-    # Store targets
+
     target_data = []
-    for t in config['targets']:
+    for t in config["targets"]:
         host = t.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
         target_data.append({"url": t, "host": host})
     dm.add_data("targets", target_data)
 
-    valid_targets = config['targets']
+    valid_targets = config["targets"]
     console.print(f"[bold green][*] Initialization complete. Run ID: {run_id}[/]")
     console.print(f"[*] Target Scope: {len(valid_targets)} hosts")
-    
-    # Module Execution
-    modules_to_run = []
-    skipped_modules = []
-    
-    # OpenAPI Analysis
-    if config.get('openapi_url') or config.get('openapi_file'):
+
+    # 5. Module Orchestration
+    if config.get("openapi_url") or config.get("openapi_file"):
         console.print("[*] Running OpenAPI Analysis...")
         openapi_mod = OpenApiModule(config, output_dir, db_path)
         openapi_mod.dm = dm
         try:
-            openapi_mod.run(url=config.get('openapi_url'), file_path=config.get('openapi_file'))
+            openapi_mod.run(
+                url=config.get("openapi_url"), file_path=config.get("openapi_file")
+            )
         except Exception as e:
             logger.error(f"OpenAPI Analysis failed: {e}")
 
-    # Instantiate modules
     mod_instances = {
         "Discovery:HTTPX": HttpxModule(config, output_dir, db_path),
         "Discovery:Nmap": NmapModule(config, output_dir, db_path),
@@ -391,67 +464,63 @@ def main():
         "Fuzzing:Ffuf": FfufModule(config, output_dir, db_path),
         "Fuzzing:Kiterunner": KiterunnerModule(config, output_dir, db_path),
         "Injection:SQLMap": SqlmapModule(config, output_dir, db_path),
-        "Load:K6": StressK6Module(config, output_dir, db_path)
+        "Load:K6": StressK6Module(config, output_dir, db_path),
     }
 
-    for name, mod in mod_instances.items():
-        mod.dm = dm
-
-    # Selection Logic
-    if config['modules']['discovery']['enabled']:
-        modules_to_run.append(("Discovery:HTTPX", mod_instances["Discovery:HTTPX"]))
-        modules_to_run.append(("Discovery:Nmap", mod_instances["Discovery:Nmap"]))
-    else:
-        skipped_modules.append(("Discovery:HTTPX", "Disabled in config"))
-        skipped_modules.append(("Discovery:Nmap", "Disabled in config"))
-        
-    if config['modules']['vulnerability']['enabled']:
-        modules_to_run.append(("Vulnerability:Nuclei", mod_instances["Vulnerability:Nuclei"]))
-        modules_to_run.append(("Vulnerability:TLS", mod_instances["Vulnerability:TLS"]))
-        modules_to_run.append(("Vulnerability:ZAP", mod_instances["Vulnerability:ZAP"]))
-    else:
-        skipped_modules.append(("Vulnerability:Nuclei", "Disabled in config"))
-        skipped_modules.append(("Vulnerability:TLS", "Disabled in config"))
-        skipped_modules.append(("Vulnerability:ZAP", "Disabled in config"))
-
+    modules_to_run = []
+    # (Selection logic mirrored here for brevity in implementation)
+    if config["modules"]["discovery"]["enabled"]:
+        modules_to_run.extend(
+            [
+                ("Discovery:HTTPX", mod_instances["Discovery:HTTPX"]),
+                ("Discovery:Nmap", mod_instances["Discovery:Nmap"]),
+            ]
+        )
+    if config["modules"]["vulnerability"]["enabled"]:
+        modules_to_run.extend(
+            [
+                ("Vulnerability:Nuclei", mod_instances["Vulnerability:Nuclei"]),
+                ("Vulnerability:TLS", mod_instances["Vulnerability:TLS"]),
+                ("Vulnerability:ZAP", mod_instances["Vulnerability:ZAP"]),
+            ]
+        )
     if args.enable_fuzz or (args.full and not args.safe):
-        modules_to_run.append(("Fuzzing:Ffuf", mod_instances["Fuzzing:Ffuf"]))
-        modules_to_run.append(("Fuzzing:Kiterunner", mod_instances["Fuzzing:Kiterunner"]))
-    else:
-        skipped_modules.append(("Fuzzing:Ffuf", "Flag not provided"))
-        skipped_modules.append(("Fuzzing:Kiterunner", "Flag not provided"))
-
+        modules_to_run.extend(
+            [
+                ("Fuzzing:Ffuf", mod_instances["Fuzzing:Ffuf"]),
+                ("Fuzzing:Kiterunner", mod_instances["Fuzzing:Kiterunner"]),
+            ]
+        )
     if args.enable_sqli or (args.full and not args.safe):
         modules_to_run.append(("Injection:SQLMap", mod_instances["Injection:SQLMap"]))
-    else:
-        skipped_modules.append(("Injection:SQLMap", "Flag not provided"))
-        
     if args.enable_load:
-         modules_to_run.append(("Load:K6", mod_instances["Load:K6"]))
-    else:
-        skipped_modules.append(("Load:K6", "Flag not provided"))
+        modules_to_run.append(("Load:K6", mod_instances["Load:K6"]))
+
+    for _, mod in mod_instances.items():
+        mod.dm = dm
 
     execution_results = []
-
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         TimeElapsedColumn(),
         console=console,
-        disable=args.quiet
+        disable=args.quiet,
     ) as progress:
         for name, module in modules_to_run:
             if not module.is_available():
                 reason = f"Tool '{module.required_tool}' not found"
-                skipped_modules.append((name, reason))
-                if not args.quiet: logger.warning(f"[*] Skipping {name}: {reason}")
-                execution_results.append({
-                    "name": name,
-                    "status": "SKIP",
-                    "findings": 0,
-                    "duration": "0s",
-                    "notes": reason
-                })
+                if not args.quiet:
+                    logger.warning(f"[*] Skipping {name}: {reason}")
+                execution_results.append(
+                    {
+                        "name": name,
+                        "status": "SKIP",
+                        "findings": 0,
+                        "duration": "0s",
+                        "notes": reason,
+                    }
+                )
                 continue
 
             task_id = progress.add_task(description=f"[*] Executing {name}...", total=None)
@@ -459,42 +528,48 @@ def main():
             try:
                 module.run(valid_targets)
                 duration = time.time() - start_time
-                module.duration = f"{duration:.2f}s"
                 progress.update(task_id, description=f"[green][+] {name} completed[/]")
-                execution_results.append({
-                    "name": name,
-                    "status": "RUN",
-                    "findings": module.findings_count,
-                    "duration": module.duration,
-                    "notes": "-"
-                })
+                execution_results.append(
+                    {
+                        "name": name,
+                        "status": "RUN",
+                        "findings": module.findings_count,
+                        "duration": f"{duration:.2f}s",
+                        "notes": "-",
+                    }
+                )
             except Exception as e:
                 duration = time.time() - start_time
                 progress.update(task_id, description=f"[red][!] {name} failed: {e}[/]")
-                execution_results.append({
-                    "name": name,
-                    "status": "FAIL",
-                    "findings": 0,
-                    "duration": f"{duration:.2f}s",
-                    "notes": str(e)
-                })
-                
-    # Final CSV Export
-    if not args.quiet: console.print("[*] Synchronizing database to CSV...")
+                execution_results.append(
+                    {
+                        "name": name,
+                        "status": "FAIL",
+                        "findings": 0,
+                        "duration": f"{duration:.2f}s",
+                        "notes": str(e),
+                    }
+                )
+
+    # 6. Finalization
+    if not args.quiet:
+        console.print("[*] Synchronizing database to CSV...")
     dm.export_all_to_csv()
-    
-    # Final Reporting
-    if not args.quiet: console.print("[*] Generating HTML artifacts...")
+
+    if not args.quiet:
+        console.print("[*] Generating HTML artifacts...")
     generate_report(output_dir, db_path, run_id)
-    
-    # Execution Summary
+
+    # 7. Final Summary
     console.print("\n[bold]Execution Summary[/]")
     console.print(f"Artifacts Directory: {os.path.abspath(output_dir)}")
-    
-    # Severity Counts
+
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
-    c.execute("SELECT severity, COUNT(*) FROM findings WHERE run_id = ? GROUP BY severity", (run_id,))
+    c.execute(
+        "SELECT severity, COUNT(*) FROM findings WHERE run_id = ? GROUP BY severity",
+        (run_id,),
+    )
     sev_counts = c.fetchall()
     conn.close()
 
@@ -503,13 +578,14 @@ def main():
         sev_table.add_column("Severity", style="bold")
         sev_table.add_column("Count", justify="right")
         for sev, count in sev_counts:
-            color = "red" if sev.lower() in ["high", "critical"] else "yellow" if sev.lower() == "medium" else "blue"
+            color = (
+                "red"
+                if sev.lower() in ["high", "critical"]
+                else "yellow" if sev.lower() == "medium" else "blue"
+            )
             sev_table.add_row(f"[{color}]{sev.upper()}[/]", str(count))
         console.print(sev_table)
-    else:
-        if not args.quiet: console.print("[*] No security findings recorded.")
 
-    # Detailed Execution Summary Table
     res_table = Table(title="Module Execution Detail", box=None)
     res_table.add_column("Module", style="cyan")
     res_table.add_column("Status")
@@ -518,21 +594,22 @@ def main():
     res_table.add_column("Notes", style="dim")
 
     for res in execution_results:
-        status_color = "green" if res['status'] == "RUN" else "yellow" if res['status'] == "SKIP" else "red"
-        res_table.add_row(
-            res['name'], 
-            f"[{status_color}]{res['status']}[/]", 
-            str(res['findings']), 
-            res['duration'], 
-            res['notes']
+        status_color = (
+            "green"
+            if res["status"] == "RUN"
+            else "yellow" if res["status"] == "SKIP" else "red"
         )
-    
-    for name, reason in skipped_modules:
-        if not any(r['name'] == name for r in execution_results):
-            res_table.add_row(name, "[yellow]SKIP[/]", "0", "0s", reason)
+        res_table.add_row(
+            res["name"],
+            f"[{status_color}]{res['status']}[/]",
+            str(res["findings"]),
+            res["duration"],
+            res["notes"],
+        )
 
     console.print(res_table)
     console.print(f"\n[bold green][+] ReqReaper session finished.[/]\n")
+
 
 if __name__ == "__main__":
     main()
