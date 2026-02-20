@@ -32,25 +32,26 @@ from modules.stress_k6_module import StressK6Module
 CONFIG_SCHEMA = {
     "type": "object",
     "properties": {
-        "targets": {"type": "array", "items": {"type": "string"}},
-        "allowed_hosts": {"type": "array", "items": {"type": "string"}},
+        "targets": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "allowed_hosts": {"type": "array", "minItems": 1, "items": {"type": "string"}},
         "output_directory": {"type": "string"},
         "openapi_url": {"type": "string"},
         "openapi_file": {"type": "string"},
         "safe_mode": {"type": "boolean"},
-        "concurrency": {"type": "integer", "minimum": 1},
-        "rate_limit_per_second": {"type": "integer", "minimum": 1},
-        "timeout": {"type": "integer", "minimum": 1},
+        "concurrency": {"type": "integer", "minimum": 1, "maximum": 50},
+        "rate_limit_per_second": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "timeout": {"type": "integer", "minimum": 1, "maximum": 3600},
         "modules": {
             "type": "object",
-            "additionalProperties": {
-                "type": "object",
-                "properties": {
-                    "enabled": {"type": "boolean"},
-                    "tools": {"type": "array", "items": {"type": "string"}}
-                },
-                "required": ["enabled"]
-            }
+            "properties": {
+                "discovery": {"type": "object", "required": ["enabled"]},
+                "vulnerability": {"type": "object", "required": ["enabled"]},
+                "fuzzing": {"type": "object", "required": ["enabled"]},
+                "injection": {"type": "object", "required": ["enabled"]},
+                "stress": {"type": "object", "required": ["enabled"]}
+            },
+            "required": ["discovery", "vulnerability"],
+            "additionalProperties": False
         },
         "auth": {
             "type": "object",
@@ -144,24 +145,35 @@ def setup_logger(console, args):
     return logging.getLogger("reqreaper")
 
 def validate_config(config, logger):
+    # 1. Schema Validation (Required fields, types, ranges)
     try:
         validate(instance=config, schema=CONFIG_SCHEMA)
-        return True
     except ValidationError as e:
-        logger.error(f"[bold red]Configuration Validation Error:[/] {e.message}")
+        path = " -> ".join([str(p) for p in e.path])
+        logger.error(f"[bold red][!] Configuration Error at {path}:[/] {e.message}")
         return False
 
-def check_allowlist(targets, allowed_hosts, logger):
-    invalid_targets = []
-    for t in targets:
-        host = t.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
-        if host not in allowed_hosts:
-            invalid_targets.append(t)
-    
-    if invalid_targets:
-        for t in invalid_targets:
-            logger.error(f"[bold red]Allowlist Violation:[/] Target '{t}' host not in allowed_hosts.")
+    # 2. Host Validation (Allowlist Integrity)
+    allowed = set(config.get('allowed_hosts', []))
+    for target in config.get('targets', []):
+        try:
+            # Basic parsing for host/IP
+            host = target.split("//")[-1].split("/")[0].split(":")[0]
+            if host not in allowed:
+                logger.error(f"[bold red][!] Allowlist Violation:[/] Target '{target}' (host: {host}) is not in allowed_hosts.")
+                return False
+        except Exception:
+            logger.error(f"[bold red][!] Invalid Target Format:[/] '{target}'")
+            return False
+
+    # 3. Module Integrity
+    valid_module_groups = {"discovery", "vulnerability", "fuzzing", "injection", "stress"}
+    config_modules = set(config.get('modules', {}).keys())
+    invalid_groups = config_modules - valid_module_groups
+    if invalid_groups:
+        logger.error(f"[bold red][!] Invalid Module Groups in config:[/] {', '.join(invalid_groups)}")
         return False
+
     return True
 
 def preflight_tools_check(console, modules_config):
@@ -273,9 +285,6 @@ def main():
 
     if not validate_config(config, logger):
         sys.exit(2)
-
-    if not check_allowlist(config['targets'], config['allowed_hosts'], logger):
-        sys.exit(3)
 
     tools_ok = preflight_tools_check(console, config['modules'])
     
