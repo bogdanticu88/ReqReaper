@@ -1,0 +1,2 @@
+{"timestamp":"2026-02-20T16:00:00Z","url":"https://api.example.com/v1/user","status_code":200,"tech":["Nginx","Python"]}
+{"timestamp":"2026-02-20T16:00:01Z","url":"https://api.example.com/v1/login","status_code":401,"tech":["Nginx"]}
