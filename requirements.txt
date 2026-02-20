@@ -1,0 +1,4 @@
+rich
+pyyaml
+requests
+sqlite-utils

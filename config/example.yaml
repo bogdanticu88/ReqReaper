@@ -1,0 +1,63 @@
+# ReqReaper Configuration File
+
+targets:
+  - https://example.com
+  - https://api.example.com
+
+allowed_hosts:
+  - example.com
+  - api.example.com
+  - 127.0.0.1
+  - localhost
+
+# Paths
+output_directory: "artifacts"
+openapi_url: "https://example.com/openapi.json"
+# openapi_file: "path/to/openapi.json"
+
+# Scan Settings
+safe_mode: true  # If true, disables dangerous modules (e.g., SQLi, injections)
+concurrency: 5
+rate_limit_per_second: 10
+timeout: 30
+
+# Module Control
+modules:
+  discovery:
+    enabled: true
+    tools:
+      - httpx
+      - nmap
+      - katana
+      - gau
+      - waybackurls
+  vulnerability:
+    enabled: true
+    tools:
+      - nuclei
+      - zap
+      - tls
+  fuzzing:
+    enabled: false # Dangerous
+    tools:
+      - ffuf
+      - kiterunner
+      - wfuzz
+  injection:
+    enabled: false # Dangerous
+    tools:
+      - sqlmap
+  stress:
+    enabled: false # Dangerous
+    tools:
+      - k6
+      - vegeta
+
+# Authentication Headers
+auth:
+  header_name: "Authorization"
+  header_value: "Bearer YOUR_TOKEN_HERE"
+  # secondary_header: "X-API-Key: YOUR_API_KEY"
+
+# Logging
+log_level: "INFO"
