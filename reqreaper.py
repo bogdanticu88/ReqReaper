@@ -15,6 +15,8 @@ from rich.logging import RichHandler
 from jsonschema import validate, ValidationError
 import logging
 
+__version__ = "0.1.0"
+
 # Import modules
 from banner import banner
 from modules.httpx_module import HttpxModule
@@ -258,6 +260,7 @@ def main():
     parser.add_argument("--config", help="Path to configuration file", required=True)
     parser.add_argument("--quiet", action="store_true", help="Quiet mode")
     parser.add_argument("--no-color", action="store_true", help="Disable colors")
+    parser.add_argument("--version", action="version", version=f"ReqReaper {__version__}")
     parser.add_argument("--safe", action="store_true", help="Enable safe mode")
     parser.add_argument("--full", action="store_true", help="Enable full scan")
     parser.add_argument("--enable-load", action="store_true", help="Enable load testing")
@@ -270,7 +273,7 @@ def main():
     console = Console(no_color=args.no_color, quiet=args.quiet)
     logger = setup_logger(console, args)
     
-    banner(console)
+    banner(console, __version__)
     
     if not os.path.exists(args.config):
         logger.error(f"Configuration file '{args.config}' not found.")
