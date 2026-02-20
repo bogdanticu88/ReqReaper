@@ -9,6 +9,7 @@ class BaseModule(ABC):
         self.config = config
         self.output_dir = output_dir
         self.db_path = db_path
+        self.dm = None # Will be injected by orchestrator
         self.raw_output_dir = os.path.join(output_dir, "raw")
         self.normalized_output_dir = os.path.join(output_dir, "normalized")
         os.makedirs(self.raw_output_dir, exist_ok=True)

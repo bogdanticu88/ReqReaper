@@ -42,16 +42,15 @@ class HttpxModule(BaseModule):
     def normalize_data(self, data):
         normalized = []
         for item in data:
-            normalized.append([
-                item.get('url'),
-                item.get('status_code'),
-                ",".join(item.get('tech', []))
-            ])
+            normalized.append({
+                "url": item.get('url'),
+                "method": "GET", # httpx default in this mode
+                "source_tool": "httpx",
+                "status_code": item.get('status_code')
+            })
         return normalized
 
     def parse_results(self, data):
-        normalized_file = os.path.join(self.normalized_output_dir, "endpoints.csv")
-        normalized_rows = self.normalize_data(data)
-        with open(normalized_file, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerows(normalized_rows)
+        normalized_data = self.normalize_data(data)
+        if self.dm:
+            self.dm.add_data("endpoints", normalized_data)

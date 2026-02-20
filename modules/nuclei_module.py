@@ -34,12 +34,15 @@ class NucleiModule(BaseModule):
         return results
 
     def parse_results(self, data):
-        normalized_file = os.path.join(self.normalized_output_dir, "nuclei_findings.csv")
-        with open(normalized_file, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            for item in data:
-                writer.writerow([
-                    item.get('template-id'),
-                    item.get('info', {}).get('severity'),
-                    item.get('matched-at')
-                ])
+        normalized = []
+        for item in data:
+            normalized.append({
+                "tool": "nuclei",
+                "severity": item.get('info', {}).get('severity', 'unknown'),
+                "title": item.get('info', {}).get('name', 'N/A'),
+                "endpoint": item.get('matched-at', 'N/A'),
+                "evidence_path": item.get('template-id', 'N/A'),
+                "confidence": "high"
+            })
+        if self.dm:
+            self.dm.add_data("findings", normalized)

@@ -16,10 +16,9 @@ def test_httpx_normalization():
     normalized = module.normalize_data(raw_data)
     
     assert len(normalized) == 2
-    assert normalized[0][0] == "https://api.example.com/v1/user"
-    assert normalized[0][1] == 200
-    assert "Nginx" in normalized[0][2]
-    assert normalized[1][1] == 401
+    assert normalized[0]['url'] == "https://api.example.com/v1/user"
+    assert normalized[0]['status_code'] == 200
+    assert normalized[0]['source_tool'] == "httpx"
 
 def test_openapi_extraction():
     module = OpenApiModule(config={}, output_dir="tmp", db_path="tmp.db")

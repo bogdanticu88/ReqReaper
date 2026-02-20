@@ -1,6 +1,5 @@
 from .base import BaseModule
 import os
-import csv
 import json
 import requests
 
@@ -40,10 +39,13 @@ class OpenApiModule(BaseModule):
         return endpoints
 
     def parse_results(self, data):
-        normalized_file = os.path.join(self.normalized_output_dir, "openapi_endpoints.csv")
-        with open(normalized_file, 'a', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            # Ensure header only on fresh file if needed
-            # For simplicity, we just append here as per current logic
-            for item in data:
-                writer.writerow([item['path'], item['method']])
+        normalized = []
+        for item in data:
+            normalized.append({
+                "url": item['path'],
+                "method": item['method'],
+                "source_tool": "openapi",
+                "status_code": 0
+            })
+        if self.dm:
+            self.dm.add_data("endpoints", normalized)
