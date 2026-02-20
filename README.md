@@ -1,78 +1,91 @@
 # ReqReaper
 
-**API Security Automation Framework**
+ReqReaper is a modular orchestration framework for API security testing, designed to automate the execution of standard red-team tools and normalize their output for analysis.
 
-ReqReaper is a professional-grade red team orchestration tool for API security testing. It automates discovery, enumeration, vulnerability scanning, and reporting for authorized security assessments.
+by Bogdan Ticu
 
-Built by Bogdan Ticu.
+## Current Status
 
-## Features
+ReqReaper is currently in an active development phase. The core orchestration engine and the following modules are functional:
 
-- **Automated Discovery:** Integrates `httpx`, `nmap`, `katana`, `gau`, `waybackurls`.
-- **Vulnerability Scanning:** Orchestrates `nuclei`, `ZAP`, `sqlmap`, `kiterunner`.
-- **Fuzzing & Stress Testing:** Supports `ffuf`, `wfuzz`, `k6`, `vegeta`.
-- **Modular Architecture:** Plugin-based system for easy extension.
-- **Reporting:** Generates professional HTML reports and normalized CSV exports.
-- **Safety Controls:** Strict allowlist enforcement and safe-mode defaults.
+- **Reconnaissance:**
+  - `httpx`: Service discovery and technology fingerprinting.
+  - `nmap`: Port scanning and service version detection.
+- **Vulnerability Scanning:**
+  - `nuclei`: Template-based vulnerability scanning.
+  - `testssl.sh`: Comprehensive TLS/SSL configuration auditing.
+  - `zap-cli`: Baseline OWASP ZAP security scans.
+- **Fuzzing & Enumeration:**
+  - `ffuf`: Directory and endpoint fuzzing.
+  - `kiterunner`: API endpoint discovery using kiterunner routes.
+- **Injection:**
+  - `sqlmap`: Automated SQL injection testing (requires `--enable-sqli`).
+- **Load Testing:**
+  - `k6`: Automated performance and stress testing (requires `--enable-load`).
+- **API Specific:**
+  - `OpenAPI`: Definition parsing and endpoint extraction from URLs or local files.
 
 ## Architecture
 
-ReqReaper uses a modular Python architecture with a SQLite backend.
-1.  **Orchestrator:** Manages execution flow and concurrency.
-2.  **Modules:** Wrappers for external security tools.
-3.  **Database:** Stores all findings, requests, and endpoints.
-4.  **Reporter:** Generates actionable artifacts.
+- **Orchestrator:** Python-based engine that manages module execution, allowlist enforcement, and artifact generation.
+- **Module System:** Abstracted plugin system where each module handles tool execution, raw output capture, and CSV normalization.
+- **Data Persistence:**
+  - **SQLite:** Centralized database (`reqreaper.db`) initialized with schema for findings and requests.
+  - **CSV:** Normalized data exports for each module.
+  - **Raw:** Unmodified output from all external tools.
+
+## Known Limitations
+
+- **Database Integration:** While the SQLite database is initialized, current module implementations primarily focus on CSV normalization. Deep integration for per-request storage is in progress.
+- **Reporting:** The HTML report currently provides a high-level execution summary; detailed findings are primarily available in the `normalized/` CSV artifacts.
+- **Tool Dependencies:** ReqReaper acts as an orchestrator and requires the underlying tools (e.g., `httpx`, `nuclei`, `nmap`) to be pre-installed and available in the system PATH.
+- **JWT Module:** Currently provides basic base64 decoding logic; full `jwt-tool` integration is planned.
+
+## Roadmap
+
+Planned features and tool integrations:
+- **Additional Discovery Tools:** `katana`, `gau`, `waybackurls`.
+- **Enhanced Fuzzing:** `wfuzz`, `arjun`.
+- **Load Testing Expansion:** `vegeta`, `wrk`, `hey`.
+- **Full Database Sync:** Real-time synchronization of all module findings into the SQLite backend.
+- **Advanced Reporting:** Dynamic HTML reports with severity-based filtering and evidence embedding.
+
+## Supported Environments
+
+- **Primary:** Kali Linux Rolling (2024.x+)
+- **Secondary:** Debian-based distributions with security tools installed via `apt` or manual binary placement.
+- **Python:** 3.11 or higher.
 
 ## Installation
 
-### Prerequisites
-
-- Python 3.11+
-- Kali Linux (recommended) or Linux environment with security tools installed.
-
-### Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Install External Tools (Kali Linux)
-
-Ensure the following tools are in your PATH:
-`httpx`, `nmap`, `nuclei`, `ffuf`, `kiterunner`, `sqlmap`, `zap-cli` (or `zaproxy`), `k6`.
+1. Install Python dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Ensure required external tools are installed:
+   ```bash
+   sudo apt install httpx nmap nuclei ffuf kiterunner sqlmap zaproxy k6 testssl.sh
+   ```
 
 ## Usage
 
-1.  **Configure:** Copy `config/example.yaml` to `config.yaml` and edit targets.
-    *CRITICAL: Ensure `allowed_hosts` includes all your targets.*
-
-2.  **Run:**
+Define targets and allowed hosts in `config.yaml`, then execute:
 
 ```bash
-python3 reqreaper.py --config config.yaml
+python3 reqreaper.py --config config.yaml [FLAGS]
 ```
 
-### CLI Options
+### Flags
 
-- `--config`: Path to configuration file.
-- `--safe`: Enable safe mode (disables dangerous modules).
-- `--full`: Run all enabled modules including extensive scans.
-- `--enable-load`: Enable load/stress testing modules.
-- `--enable-fuzz`: Enable fuzzing modules.
-- `--enable-sqli`: Enable SQL injection modules.
-- `--quiet`: Minimal output.
-- `--no-color`: Disable colored output.
+- `--config`: (Required) Path to the YAML configuration file.
+- `--safe`: Disables dangerous modules (default behavior).
+- `--full`: Enables all discovery and vulnerability modules.
+- `--enable-load`: Explicitly enables load testing modules.
+- `--enable-fuzz`: Explicitly enables directory/endpoint fuzzing.
+- `--enable-sqli`: Explicitly enables SQL injection testing.
+- `--quiet`: Suppresses informational logs.
+- `--no-color`: Disables ANSI color output.
 
-## Output
+## Legal Warning
 
-Artifacts are stored in `artifacts/run_<timestamp>/`.
-- `report/`: HTML report.
-- `normalized/`: CSV exports (findings, endpoints).
-- `raw/`: Raw tool outputs.
-- `reqreaper.db`: SQLite database.
-
-## Legal Disclaimer
-
-**AUTHORIZED USE ONLY.**
-
-This tool is designed for security professionals and researchers to test systems they own or have explicit permission to test. Unauthorized use against systems is illegal. The author assumes no liability for misuse.
+ReqReaper is for authorized security testing only. Use of this tool against targets without explicit, written permission is illegal. The developer assumes no liability for damages or legal consequences resulting from misuse of this software.
