@@ -326,9 +326,101 @@ def generate_report(output_dir, db_path, run_id):
         f.write(final_html)
 
 
+def run_demo(console):
+    """Simulates a realistic ReqReaper execution flow for demonstration purposes."""
+    banner(console, __version__)
+
+    console.print("[*] Loading configuration...")
+    time.sleep(1)
+    run_id = str(uuid.uuid4())
+    console.print(f"[*] Initialization complete. Run ID: {run_id}")
+    console.print("[*] Target Scope: 2 hosts (https://api.example.com, https://example.com)")
+    time.sleep(1)
+
+    # Tool Availability Table
+    table = Table(title="Preflight Tool Availability Check")
+    table.add_column("Tool", style="cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Path", style="dim")
+    table.add_row("httpx", "[green]OK[/]", "/usr/bin/httpx")
+    table.add_row("nmap", "[green]OK[/]", "/usr/bin/nmap")
+    table.add_row("nuclei", "[green]OK[/]", "/usr/bin/nuclei")
+    table.add_row("zap-cli", "[red]MISSING[/]", "Not Found")
+    table.add_row("sqlmap", "[green]OK[/]", "/usr/bin/sqlmap")
+    console.print(table)
+    time.sleep(1)
+
+    # Execution Simulation
+    demo_modules = [
+        ("Discovery:HTTPX", "RUN", 12, "0.45s", "-"),
+        ("Discovery:Nmap", "RUN", 4, "2.12s", "-"),
+        ("Vulnerability:Nuclei", "RUN", 3, "1.89s", "-"),
+        ("Vulnerability:ZAP", "SKIP", 0, "0s", "Tool 'zap-cli' not found"),
+        ("Injection:SQLMap", "RUN", 1, "3.45s", "-"),
+    ]
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        for name, status, findings, duration, notes in demo_modules:
+            if status == "SKIP":
+                console.print(f"[*] Skipping {name}: {notes}")
+                continue
+
+            task_id = progress.add_task(description=f"[*] Executing {name}...", total=None)
+            time.sleep(float(duration[:-1]))  # Simulate duration
+            progress.update(task_id, description=f"[green][+] {name} completed[/]")
+
+    # Artifact generation simulation
+    console.print("[*] Synchronizing database to CSV...")
+    time.sleep(1)
+    console.print("[*] Generating HTML artifacts...")
+    time.sleep(1)
+
+    # Final Summary
+    output_dir = os.path.join("artifacts", "run_demo")
+    os.makedirs(os.path.join(output_dir, "normalized"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "report"), exist_ok=True)
+
+    # Create dummy files
+    for f in ["normalized/findings.csv", "report/report.html", "reqreaper.db"]:
+        with open(os.path.join(output_dir, f), "w") as fd:
+            fd.write("Demo Artifact")
+
+    console.print("\n[bold]Execution Summary[/]")
+    console.print(f"Artifacts Directory: {os.path.abspath(output_dir)}")
+
+    sev_table = Table(title="Findings by Severity", box=None)
+    sev_table.add_column("Severity", style="bold")
+    sev_table.add_column("Count", justify="right")
+    sev_table.add_row("[red]HIGH[/]", "2")
+    sev_table.add_row("[yellow]MEDIUM[/]", "5")
+    sev_table.add_row("[blue]LOW[/]", "13")
+    console.print(sev_table)
+
+    res_table = Table(title="Module Execution Detail", box=None)
+    res_table.add_column("Module", style="cyan")
+    res_table.add_column("Status")
+    res_table.add_column("Findings", justify="right")
+    res_table.add_column("Duration", justify="right")
+    res_table.add_column("Notes", style="dim")
+
+    for name, status, findings, duration, notes in demo_modules:
+        status_color = "green" if status == "RUN" else "yellow"
+        res_table.add_row(
+            name, f"[{status_color}]{status}[/]", str(findings), duration, notes
+        )
+
+    console.print(res_table)
+    console.print(f"\n[bold green][+] ReqReaper session finished.[/]\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="ReqReaper API Security Framework")
-    parser.add_argument("--config", help="Path to configuration file", required=True)
+    parser.add_argument("--config", help="Path to configuration file")
     parser.add_argument("--quiet", action="store_true", help="Quiet mode")
     parser.add_argument("--no-color", action="store_true", help="Disable colors")
     parser.add_argument(
@@ -346,11 +438,22 @@ def main():
     parser.add_argument(
         "--dry-run", action="store_true", help="Safe preflight: validate config"
     )
+    parser.add_argument(
+        "--demo", action="store_true", help="Run in demo mode (simulated execution)"
+    )
 
     args = parser.parse_args()
 
     console = Console(no_color=args.no_color, quiet=args.quiet)
     logger = setup_logger(console, args)
+
+    if args.demo:
+        run_demo(console)
+        sys.exit(0)
+
+    if not args.config:
+        parser.print_help()
+        sys.exit(1)
 
     banner(console, __version__)
 
