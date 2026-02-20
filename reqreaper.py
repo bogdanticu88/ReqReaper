@@ -98,44 +98,32 @@ class DataManager:
         c = conn.cursor()
 
         # Consistent Schema Definition
-        c.execute(
-            """CREATE TABLE IF NOT EXISTS targets 
+        c.execute("""CREATE TABLE IF NOT EXISTS targets 
                (id INTEGER PRIMARY KEY, run_id TEXT, url TEXT, host TEXT, 
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
-        )
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 
-        c.execute(
-            """CREATE TABLE IF NOT EXISTS endpoints 
+        c.execute("""CREATE TABLE IF NOT EXISTS endpoints 
                (id INTEGER PRIMARY KEY, run_id TEXT, url TEXT, method TEXT, 
                 source_tool TEXT, status_code INTEGER, 
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
-        )
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 
-        c.execute(
-            """CREATE TABLE IF NOT EXISTS requests 
+        c.execute("""CREATE TABLE IF NOT EXISTS requests 
                (id INTEGER PRIMARY KEY, run_id TEXT, method TEXT, url TEXT, 
                 status INTEGER, response_time REAL, 
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
-        )
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 
-        c.execute(
-            """CREATE TABLE IF NOT EXISTS findings 
+        c.execute("""CREATE TABLE IF NOT EXISTS findings 
                (id INTEGER PRIMARY KEY, run_id TEXT, tool TEXT, severity TEXT, 
                 title TEXT, endpoint TEXT, evidence_path TEXT, confidence TEXT, 
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
-        )
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 
-        c.execute(
-            """CREATE TABLE IF NOT EXISTS tls_findings 
+        c.execute("""CREATE TABLE IF NOT EXISTS tls_findings 
                (id INTEGER PRIMARY KEY, run_id TEXT, host TEXT, finding TEXT, 
-                severity TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
-        )
+                severity TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 
-        c.execute(
-            """CREATE TABLE IF NOT EXISTS load_results 
+        c.execute("""CREATE TABLE IF NOT EXISTS load_results 
                (id INTEGER PRIMARY KEY, run_id TEXT, target TEXT, rps REAL, 
-                p95_latency REAL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"""
-        )
+                p95_latency REAL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 
         conn.commit()
         conn.close()
@@ -222,7 +210,13 @@ def validate_config(config, logger):
             return False
 
     # 3. Module Integrity
-    valid_module_groups = {"discovery", "vulnerability", "fuzzing", "injection", "stress"}
+    valid_module_groups = {
+        "discovery",
+        "vulnerability",
+        "fuzzing",
+        "injection",
+        "stress",
+    }
     config_modules = set(config.get("modules", {}).keys())
     invalid_groups = config_modules - valid_module_groups
     if invalid_groups:
@@ -337,12 +331,18 @@ def main():
     parser.add_argument("--config", help="Path to configuration file", required=True)
     parser.add_argument("--quiet", action="store_true", help="Quiet mode")
     parser.add_argument("--no-color", action="store_true", help="Disable colors")
-    parser.add_argument("--version", action="version", version=f"ReqReaper {__version__}")
+    parser.add_argument(
+        "--version", action="version", version=f"ReqReaper {__version__}"
+    )
     parser.add_argument("--safe", action="store_true", help="Enable safe mode")
     parser.add_argument("--full", action="store_true", help="Enable full scan")
-    parser.add_argument("--enable-load", action="store_true", help="Enable load testing")
+    parser.add_argument(
+        "--enable-load", action="store_true", help="Enable load testing"
+    )
     parser.add_argument("--enable-fuzz", action="store_true", help="Enable fuzzing")
-    parser.add_argument("--enable-sqli", action="store_true", help="Enable SQL injection")
+    parser.add_argument(
+        "--enable-sqli", action="store_true", help="Enable SQL injection"
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="Safe preflight: validate config"
     )
@@ -382,7 +382,9 @@ def main():
         skipped_info.append(("Discovery", "Disabled in config"))
 
     if config["modules"]["vulnerability"]["enabled"]:
-        planned_modules.extend(["Vulnerability:Nuclei", "Vulnerability:TLS", "Vulnerability:ZAP"])
+        planned_modules.extend(
+            ["Vulnerability:Nuclei", "Vulnerability:TLS", "Vulnerability:ZAP"]
+        )
     else:
         skipped_info.append(("Vulnerability", "Disabled in config"))
 
@@ -427,7 +429,9 @@ def main():
     # 4. Execution Setup
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = str(uuid.uuid4())
-    output_dir = os.path.join(config.get("output_directory", "artifacts"), f"run_{timestamp}")
+    output_dir = os.path.join(
+        config.get("output_directory", "artifacts"), f"run_{timestamp}"
+    )
     os.makedirs(output_dir, exist_ok=True)
 
     db_path = os.path.join(output_dir, "reqreaper.db")
@@ -435,7 +439,9 @@ def main():
 
     target_data = []
     for t in config["targets"]:
-        host = t.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+        host = (
+            t.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+        )
         target_data.append({"url": t, "host": host})
     dm.add_data("targets", target_data)
 
@@ -523,7 +529,9 @@ def main():
                 )
                 continue
 
-            task_id = progress.add_task(description=f"[*] Executing {name}...", total=None)
+            task_id = progress.add_task(
+                description=f"[*] Executing {name}...", total=None
+            )
             start_time = time.time()
             try:
                 module.run(valid_targets)
@@ -608,7 +616,7 @@ def main():
         )
 
     console.print(res_table)
-    console.print(f"\n[bold green][+] ReqReaper session finished.[/]\n")
+    console.print("\n[bold green][+] ReqReaper session finished.[/]\n")
 
 
 if __name__ == "__main__":

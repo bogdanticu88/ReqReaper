@@ -1,7 +1,6 @@
 from .base import BaseModule
 import os
-import csv
-import shutil
+
 
 class NmapModule(BaseModule):
     def __init__(self, config, output_dir, db_path):
@@ -13,21 +12,14 @@ class NmapModule(BaseModule):
         for target in targets:
             domain = target.replace("https://", "").replace("http://", "").split("/")[0]
             output_xml = os.path.join(self.raw_output_dir, f"nmap_{domain}.xml")
-            
-            cmd = [
-                "nmap",
-                "-sC",
-                "-sV",
-                "-p-",
-                "-oX", output_xml,
-                domain
-            ]
+
+            cmd = ["nmap", "-sC", "-sV", "-p-", "-oX", output_xml, domain]
             self.run_command(cmd, "nmap")
             results.append({"domain": domain, "output": output_xml})
-            
+
         self.parse_results(results)
         return results
 
     def parse_results(self, data):
         # Placeholder for nmap XML parsing to count findings (ports)
-        self.findings_count = len(data) # Simple count of hosts for now
+        self.findings_count = len(data)  # Simple count of hosts for now

@@ -1,6 +1,6 @@
-from rich.panel import Panel
 from rich.align import Align
 from rich.text import Text
+
 
 def banner(console, version):
     art = r"""
@@ -11,10 +11,10 @@ def banner(console, version):
 ██║  ██║███████╗╚██████╔╝██║  ██║███████╗██║  ██║██║     ███████╗██║  ██║
 ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
 """
-    
+
     text = Text(art, style="bold red")
     subtitle = Text(f"v{version} | by Bogdan Ticu", style="bold white")
-    
+
     console.print(Align.center(text))
     console.print(Align.center(subtitle))
     console.print("\n")
