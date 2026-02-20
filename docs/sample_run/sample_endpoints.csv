@@ -1,0 +1,4 @@
+id,run_id,url,method,source_tool,status_code,timestamp
+1,550e8400-e29b-41d4-a716-446655440000,https://api.example.com/v1/user,GET,httpx,200,2026-02-20 12:02:00
+2,550e8400-e29b-41d4-a716-446655440000,https://api.example.com/v1/auth/login,POST,openapi,0,2026-02-20 12:01:00
+3,550e8400-e29b-41d4-a716-446655440000,https://api.example.com/health,GET,httpx,200,2026-02-20 12:02:05

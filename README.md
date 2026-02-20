@@ -75,6 +75,44 @@ Define targets and allowed hosts in `config.yaml`, then execute:
 python3 reqreaper.py --config config.yaml [FLAGS]
 ```
 
+## Example Execution
+
+### Command
+```bash
+python3 reqreaper.py --config config.yaml --full
+```
+
+### Console Output Snippet
+```text
+[*] Initialization complete. Run ID: 550e8400-e29b-41d4-a716-446655440000
+[*] Target Scope: 2 hosts
+[*] Running OpenAPI Analysis...
+[*] Executing Discovery:HTTPX...
+[+] Discovery:HTTPX completed
+[*] Executing Discovery:Nmap...
+[+] Discovery:Nmap completed
+[*] Executing Vulnerability:Nuclei...
+[+] Vulnerability:Nuclei completed
+
+Execution Summary
+Artifacts Directory: /home/user/ReqReaper/artifacts/run_20260220_120000
+
+Findings by Severity
+Severity  Count
+HIGH          2
+MEDIUM        5
+LOW          12
+```
+
+### Example Findings Table (Normalized CSV)
+| Tool   | Severity | Title                        | Endpoint                        | Confidence |
+|--------|----------|------------------------------|---------------------------------|------------|
+| nuclei | HIGH     | Exposed Git Repository       | https://api.example.com/.git/   | high       |
+| nuclei | MEDIUM   | Information Disclosure       | https://api.example.com/        | high       |
+| nuclei | LOW      | Missing Security Header      | https://api.example.com/        | high       |
+
+Full samples can be found in `docs/sample_run/`.
+
 ### Flags
 
 - `--config`: (Required) Path to the YAML configuration file.

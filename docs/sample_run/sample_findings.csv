@@ -1,0 +1,4 @@
+id,run_id,tool,severity,title,endpoint,evidence_path,confidence,timestamp
+1,550e8400-e29b-41d4-a716-446655440000,nuclei,high,Exposed Git Repository,https://api.example.com/.git/,git-config,high,2026-02-20 12:05:00
+2,550e8400-e29b-41d4-a716-446655440000,nuclei,medium,Information Disclosure - Server Version,https://api.example.com/,server-header,high,2026-02-20 12:05:15
+3,550e8400-e29b-41d4-a716-446655440000,nuclei,low,Missing Security Header: X-Frame-Options,https://api.example.com/,header-check,high,2026-02-20 12:05:20

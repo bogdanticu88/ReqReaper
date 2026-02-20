@@ -278,12 +278,57 @@ def main():
 
     tools_ok = preflight_tools_check(console, config['modules'])
     
+    # Planned Modules (for Dry-Run display)
+    planned_modules = []
+    skipped_info = []
+
+    if config['modules']['discovery']['enabled']:
+        planned_modules.append("Discovery:HTTPX")
+        planned_modules.append("Discovery:Nmap")
+    else:
+        skipped_info.append(("Discovery", "Disabled in config"))
+
+    if config['modules']['vulnerability']['enabled']:
+        planned_modules.append("Vulnerability:Nuclei")
+        planned_modules.append("Vulnerability:TLS")
+        planned_modules.append("Vulnerability:ZAP")
+    else:
+        skipped_info.append(("Vulnerability", "Disabled in config"))
+
+    if args.enable_fuzz or (args.full and not args.safe):
+        planned_modules.append("Fuzzing:Ffuf")
+        planned_modules.append("Fuzzing:Kiterunner")
+    else:
+        skipped_info.append(("Fuzzing", "Flag not provided"))
+
+    if args.enable_sqli or (args.full and not args.safe):
+        planned_modules.append("Injection:SQLMap")
+    else:
+        skipped_info.append(("Injection", "Flag not provided"))
+
+    if args.enable_load:
+         planned_modules.append("Load:K6")
+    else:
+        skipped_info.append(("Load", "Flag not provided"))
+
     if args.dry_run:
+        plan_table = Table(title="Planned Module Execution (Dry-Run)", box=None)
+        plan_table.add_column("Module", style="cyan")
+        plan_table.add_column("Action")
+        plan_table.add_column("Reason", style="dim")
+
+        for mod in planned_modules:
+            plan_table.add_row(mod, "[green]WILL RUN[/]", "-")
+        for mod, reason in skipped_info:
+            plan_table.add_row(mod, "[yellow]WILL SKIP[/]", reason)
+        
+        console.print(plan_table)
+
         if tools_ok:
-            console.print("\n[bold green]Preflight successful![/]")
+            console.print("\n[bold green][+] Preflight successful![/] Config is valid and tools are available.")
             sys.exit(0)
         else:
-            console.print("\n[bold yellow]Preflight warning:[/] Missing tools.")
+            console.print("\n[bold yellow][!] Preflight warning:[/] Config is valid but some required tools are missing.")
             sys.exit(4)
 
     if not tools_ok:

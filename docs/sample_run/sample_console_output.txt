@@ -1,0 +1,43 @@
+                                                                                                                                                
+                                   ██████╗ ███████╗ ██████╗ ██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗                                    
+                                   ██╔══██╗██╔════╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗                                   
+                                   ██████╔╝█████╗  ██║   ██║██████╔╝█████╗  ███████║██████╔╝█████╗  ██████╔╝                                   
+                                   ██╔══██╗██╔══╝  ██║   ██║██╔══██╗██╔══╝  ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗                                   
+                                   ██║  ██║███████╗╚██████╔╝██║  ██║███████╗██║  ██║██║     ███████╗██║  ██║                                   
+                                   ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝                                   
+                                                                                                                                               
+                                                                by Bogdan Ticu                                                                 
+
+
+[*] Initialization complete. Run ID: 550e8400-e29b-41d4-a716-446655440000
+[*] Target Scope: 2 hosts
+[*] Running OpenAPI Analysis...
+[*] Executing Discovery:HTTPX...
+[+] Discovery:HTTPX completed
+[*] Executing Discovery:Nmap...
+[+] Discovery:Nmap completed
+[*] Executing Vulnerability:Nuclei...
+[+] Vulnerability:Nuclei completed
+[*] Synchronizing database to CSV...
+[*] Generating HTML artifacts...
+
+Execution Summary
+Artifacts Directory: /home/user/ReqReaper/artifacts/run_20260220_120000
+
+Findings by Severity
+Severity  Count
+HIGH          2
+MEDIUM        5
+LOW          12
+
+Module Status
+Module                Status  Reason
+Discovery:HTTPX       RUN     -
+Discovery:Nmap        RUN     -
+Vulnerability:Nuclei  RUN     -
+Vulnerability:TLS     SKIP    Disabled in config
+Fuzzing               SKIP    Flag not provided
+Injection             SKIP    Flag not provided
+Load                  SKIP    Flag not provided
+
+[+] ReqReaper session finished.
