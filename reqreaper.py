@@ -307,86 +307,130 @@ def main():
     dm.add_data("targets", target_data)
 
     valid_targets = config['targets']
-    console.print(f"[bold green]Starting ReqReaper (Run ID: {run_id}) on {len(valid_targets)} targets...[/]")
+    console.print(f"[bold green][*] Initialization complete. Run ID: {run_id}[/]")
+    console.print(f"[*] Target Scope: {len(valid_targets)} hosts")
     
     # Module Execution
     modules_to_run = []
+    skipped_modules = []
     
+    # OpenAPI Analysis
     if config.get('openapi_url') or config.get('openapi_file'):
-        console.print("[bold cyan]Running OpenAPI Analysis...[/]")
+        console.print("[*] Running OpenAPI Analysis...")
         openapi_mod = OpenApiModule(config, output_dir, db_path)
-        openapi_mod.dm = dm # Inject DataManager
-        openapi_mod.run(url=config.get('openapi_url'), file_path=config.get('openapi_file'))
+        openapi_mod.dm = dm
+        try:
+            openapi_mod.run(url=config.get('openapi_url'), file_path=config.get('openapi_file'))
+        except Exception as e:
+            logger.error(f"OpenAPI Analysis failed: {e}")
 
-    # Instantiate modules and inject DataManager
+    # Instantiate modules
     mod_instances = {
-        "HTTPX Discovery": HttpxModule(config, output_dir, db_path),
-        "Nmap Scan": NmapModule(config, output_dir, db_path),
-        "Nuclei Scan": NucleiModule(config, output_dir, db_path),
-        "TLS Scan": TLSModule(config, output_dir, db_path),
-        "ZAP Baseline": ZapModule(config, output_dir, db_path),
-        "Ffuf Fuzzing": FfufModule(config, output_dir, db_path),
-        "Kiterunner": KiterunnerModule(config, output_dir, db_path),
-        "SQLMap": SqlmapModule(config, output_dir, db_path),
-        "K6 Stress Test": StressK6Module(config, output_dir, db_path)
+        "Discovery:HTTPX": HttpxModule(config, output_dir, db_path),
+        "Discovery:Nmap": NmapModule(config, output_dir, db_path),
+        "Vulnerability:Nuclei": NucleiModule(config, output_dir, db_path),
+        "Vulnerability:TLS": TLSModule(config, output_dir, db_path),
+        "Vulnerability:ZAP": ZapModule(config, output_dir, db_path),
+        "Fuzzing:Ffuf": FfufModule(config, output_dir, db_path),
+        "Fuzzing:Kiterunner": KiterunnerModule(config, output_dir, db_path),
+        "Injection:SQLMap": SqlmapModule(config, output_dir, db_path),
+        "Load:K6": StressK6Module(config, output_dir, db_path)
     }
 
     for name, mod in mod_instances.items():
         mod.dm = dm
 
-    # Build execution list based on config and flags
+    # Selection Logic
     if config['modules']['discovery']['enabled']:
-        modules_to_run.append(("HTTPX Discovery", mod_instances["HTTPX Discovery"]))
-        modules_to_run.append(("Nmap Scan", mod_instances["Nmap Scan"]))
+        modules_to_run.append(("Discovery:HTTPX", mod_instances["Discovery:HTTPX"]))
+        modules_to_run.append(("Discovery:Nmap", mod_instances["Discovery:Nmap"]))
+    else:
+        skipped_modules.append(("Discovery", "Disabled in config"))
         
     if config['modules']['vulnerability']['enabled']:
-        modules_to_run.append(("Nuclei Scan", mod_instances["Nuclei Scan"]))
-        modules_to_run.append(("TLS Scan", mod_instances["TLS Scan"]))
-        modules_to_run.append(("ZAP Baseline", mod_instances["ZAP Baseline"]))
+        modules_to_run.append(("Vulnerability:Nuclei", mod_instances["Vulnerability:Nuclei"]))
+        modules_to_run.append(("Vulnerability:TLS", mod_instances["Vulnerability:TLS"]))
+        modules_to_run.append(("Vulnerability:ZAP", mod_instances["Vulnerability:ZAP"]))
+    else:
+        skipped_modules.append(("Vulnerability", "Disabled in config"))
 
-    if args.enable_fuzz or (args.full and not args.safe):
-        modules_to_run.append(("Ffuf Fuzzing", mod_instances["Ffuf Fuzzing"]))
-        modules_to_run.append(("Kiterunner", mod_instances["Kiterunner"]))
+    if args.enable_fuzz:
+        modules_to_run.append(("Fuzzing:Ffuf", mod_instances["Fuzzing:Ffuf"]))
+        modules_to_run.append(("Fuzzing:Kiterunner", mod_instances["Fuzzing:Kiterunner"]))
+    elif args.full and not args.safe:
+        modules_to_run.append(("Fuzzing:Ffuf", mod_instances["Fuzzing:Ffuf"]))
+        modules_to_run.append(("Fuzzing:Kiterunner", mod_instances["Fuzzing:Kiterunner"]))
+    else:
+        skipped_modules.append(("Fuzzing", "Flag not provided"))
 
     if args.enable_sqli or (args.full and not args.safe):
-        modules_to_run.append(("SQLMap", mod_instances["SQLMap"]))
+        modules_to_run.append(("Injection:SQLMap", mod_instances["Injection:SQLMap"]))
+    else:
+        skipped_modules.append(("Injection", "Flag not provided"))
         
     if args.enable_load:
-         modules_to_run.append(("K6 Stress Test", mod_instances["K6 Stress Test"]))
+         modules_to_run.append(("Load:K6", mod_instances["Load:K6"]))
+    else:
+        skipped_modules.append(("Load", "Flag not provided"))
 
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         TimeElapsedColumn(),
-        console=console
+        console=console,
+        disable=args.quiet
     ) as progress:
         for name, module in modules_to_run:
-            task_id = progress.add_task(description=f"Running {name}...", total=None)
+            task_id = progress.add_task(description=f"[*] Executing {name}...", total=None)
             try:
                 module.run(valid_targets)
-                progress.update(task_id, description=f"[green]{name} Complete[/]")
+                progress.update(task_id, description=f"[green][+] {name} completed[/]")
             except Exception as e:
-                progress.update(task_id, description=f"[red]{name} Failed: {e}[/]")
-                logger.error(f"Module {name} failed: {e}")
+                progress.update(task_id, description=f"[red][!] {name} failed: {e}[/]")
                 
     # Final CSV Export
-    console.print("[bold blue]Exporting normalized CSVs...[/]")
+    if not args.quiet: console.print("[*] Synchronizing database to CSV...")
     dm.export_all_to_csv()
     
     # Final Reporting
-    console.print("[bold blue]Generating Report...[/]")
+    if not args.quiet: console.print("[*] Generating HTML artifacts...")
     generate_report(output_dir, db_path, run_id)
     
-    # Summary Table
-    table = Table(title="ReqReaper Execution Summary")
-    table.add_column("Module", style="cyan")
-    table.add_column("Status", style="green")
+    # Execution Summary
+    console.print("\n[bold]Execution Summary[/]")
+    console.print(f"Artifacts Directory: {os.path.abspath(output_dir)}")
     
+    # Severity Counts
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT severity, COUNT(*) FROM findings WHERE run_id = ? GROUP BY severity", (run_id,))
+    sev_counts = c.fetchall()
+    conn.close()
+
+    if sev_counts:
+        sev_table = Table(title="Findings by Severity", box=None)
+        sev_table.add_column("Severity", style="bold")
+        sev_table.add_column("Count", justify="right")
+        for sev, count in sev_counts:
+            color = "red" if sev.lower() in ["high", "critical"] else "yellow" if sev.lower() == "medium" else "blue"
+            sev_table.add_row(f"[{color}]{sev.upper()}[/]", str(count))
+        console.print(sev_table)
+    else:
+        console.print("[*] No security findings recorded.")
+
+    # Module Status Table
+    status_table = Table(title="Module Status", box=None)
+    status_table.add_column("Module", style="cyan")
+    status_table.add_column("Status")
+    status_table.add_column("Reason", style="dim")
+
     for name, _ in modules_to_run:
-        table.add_row(name, "Executed")
+        status_table.add_row(name, "[green]RUN[/]", "-")
+    for name, reason in skipped_modules:
+        status_table.add_row(name, "[yellow]SKIP[/]", reason)
         
-    console.print(table)
-    console.print(f"[bold green]Scan Complete. Artifacts stored in {output_dir}[/]")
+    console.print(status_table)
+    console.print(f"\n[bold green][+] ReqReaper session finished.[/]\n")
 
 if __name__ == "__main__":
     main()
