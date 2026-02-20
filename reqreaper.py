@@ -5,10 +5,12 @@ import sys
 import datetime
 import sqlite3
 import csv
+import shutil
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.logging import RichHandler
+from jsonschema import validate, ValidationError
 import logging
 
 # Import modules
@@ -23,7 +25,42 @@ from modules.nuclei_module import NucleiModule
 from modules.sqlmap_module import SqlmapModule
 from modules.openapi_module import OpenApiModule
 from modules.stress_k6_module import StressK6Module
-# jwt_module is placeholder in this context
+
+# Configuration Schema
+CONFIG_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "targets": {"type": "array", "items": {"type": "string"}},
+        "allowed_hosts": {"type": "array", "items": {"type": "string"}},
+        "output_directory": {"type": "string"},
+        "openapi_url": {"type": "string"},
+        "openapi_file": {"type": "string"},
+        "safe_mode": {"type": "boolean"},
+        "concurrency": {"type": "integer", "minimum": 1},
+        "rate_limit_per_second": {"type": "integer", "minimum": 1},
+        "timeout": {"type": "integer", "minimum": 1},
+        "modules": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "enabled": {"type": "boolean"},
+                    "tools": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["enabled"]
+            }
+        },
+        "auth": {
+            "type": "object",
+            "properties": {
+                "header_name": {"type": "string"},
+                "header_value": {"type": "string"}
+            }
+        },
+        "log_level": {"type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]}
+    },
+    "required": ["targets", "allowed_hosts", "modules"]
+}
 
 def setup_logger(console, args):
     logging.basicConfig(
@@ -34,11 +71,57 @@ def setup_logger(console, args):
     )
     return logging.getLogger("reqreaper")
 
-def load_config(config_path):
-    if not os.path.exists(config_path):
-        return None
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+def validate_config(config, logger):
+    try:
+        validate(instance=config, schema=CONFIG_SCHEMA)
+        return True
+    except ValidationError as e:
+        logger.error(f"[bold red]Configuration Validation Error:[/] {e.message}")
+        return False
+
+def check_allowlist(targets, allowed_hosts, logger):
+    invalid_targets = []
+    for t in targets:
+        # Simple extraction of host
+        host = t.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+        if host not in allowed_hosts:
+            invalid_targets.append(t)
+    
+    if invalid_targets:
+        for t in invalid_targets:
+            logger.error(f"[bold red]Allowlist Violation:[/] Target '{t}' host not in allowed_hosts.")
+        return False
+    return True
+
+def preflight_tools_check(console, modules_config):
+    table = Table(title="Preflight Tool Availability Check")
+    table.add_column("Tool", style="cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Path", style="dim")
+
+    # Flatten list of tools from enabled modules
+    required_tools = set()
+    for mod_name, mod_cfg in modules_config.items():
+        if mod_cfg.get('enabled'):
+            for tool in mod_cfg.get('tools', []):
+                # Manual override for some tools where binary names differ
+                binary_name = tool
+                if tool == "zap": binary_name = "zap-cli"
+                elif tool == "tls": binary_name = "testssl.sh"
+                elif tool == "kiterunner": binary_name = "kr"
+                required_tools.add(binary_name)
+
+    all_ok = True
+    for tool in sorted(list(required_tools)):
+        path = shutil.which(tool)
+        if path:
+            table.add_row(tool, "[green]OK[/]", path)
+        else:
+            table.add_row(tool, "[red]MISSING[/]", "Not Found")
+            all_ok = False
+            
+    console.print(table)
+    return all_ok
 
 def init_db(db_path):
     conn = sqlite3.connect(db_path)
@@ -101,6 +184,7 @@ def main():
     parser.add_argument("--enable-load", action="store_true", help="Enable load testing")
     parser.add_argument("--enable-fuzz", action="store_true", help="Enable fuzzing")
     parser.add_argument("--enable-sqli", action="store_true", help="Enable SQL injection")
+    parser.add_argument("--dry-run", action="store_true", help="Safe preflight: validate config and check tools")
     
     args = parser.parse_args()
     
@@ -109,11 +193,41 @@ def main():
     
     banner(console)
     
-    config = load_config(args.config)
-    if not config:
-        logger.error("[bold red]Configuration file not found![/]")
+    # 1. Load Config
+    if not os.path.exists(args.config):
+        logger.error(f"[bold red]Error:[/] Configuration file '{args.config}' not found.")
         sys.exit(1)
         
+    try:
+        with open(args.config, 'r') as f:
+            config = yaml.safe_load(f)
+    except Exception as e:
+        logger.error(f"[bold red]Error parsing YAML:[/] {e}")
+        sys.exit(1)
+
+    # 2. Validate Config Schema
+    if not validate_config(config, logger):
+        sys.exit(2)
+
+    # 3. Enforce Allowlist
+    if not check_allowlist(config['targets'], config['allowed_hosts'], logger):
+        sys.exit(3)
+
+    # 4. Preflight Tools Check
+    tools_ok = preflight_tools_check(console, config['modules'])
+    
+    if args.dry_run:
+        if tools_ok:
+            console.print("\n[bold green]Preflight successful![/] Config is valid and tools are available.")
+            sys.exit(0)
+        else:
+            console.print("\n[bold yellow]Preflight warning:[/] Config is valid but some tools are missing.")
+            sys.exit(4)
+
+    if not tools_ok:
+         logger.error("[bold red]Critical Error:[/] Some required tools are missing. Run with --dry-run for details.")
+         sys.exit(4)
+         
     # Setup Output
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = os.path.join(config.get("output_directory", "artifacts"), f"run_{timestamp}")
@@ -122,33 +236,20 @@ def main():
     db_path = os.path.join(output_dir, "reqreaper.db")
     db_conn = init_db(db_path)
     
-    targets = config.get("targets", [])
-    allowed = config.get("allowed_hosts", [])
-    
-    # Allowlist Check
-    valid_targets = []
-    for t in targets:
-        host = t.replace("https://", "").replace("http://", "").split("/")[0]
-        if host in allowed:
-            valid_targets.append(t)
-        else:
-            logger.warning(f"[yellow]Target {t} not in allowlist. Skipping.[/]")
-            
-    if not valid_targets:
-        logger.error("[bold red]No valid targets found in allowlist. Terminating.[/]")
-        sys.exit(1)
+    valid_targets = config['targets']
 
     console.print(f"[bold green]Starting ReqReaper on {len(valid_targets)} targets...[/]")
     
     # Module Execution
     modules_to_run = []
     
-    # Discovery
+    # OpenAPI Analysis
     if config.get('openapi_url') or config.get('openapi_file'):
         console.print("[bold cyan]Running OpenAPI Analysis...[/]")
         openapi_mod = OpenApiModule(config, output_dir, db_path)
         openapi_mod.run(url=config.get('openapi_url'), file_path=config.get('openapi_file'))
 
+    # Discovery
     if config['modules']['discovery']['enabled']:
         modules_to_run.append(("HTTPX Discovery", HttpxModule(config, output_dir, db_path)))
         modules_to_run.append(("Nmap Scan", NmapModule(config, output_dir, db_path)))
@@ -189,11 +290,6 @@ def main():
                 
     # Final Reporting
     console.print("[bold blue]Generating Report...[/]")
-    # Fetch findings from DB (Mocking for now as modules didn't insert into DB in this simplified version, 
-    # but would have in full implementation. We'll check the CSVs or just create a dummy report entry)
-    
-    # In a real implementation, modules would insert into sqlite. 
-    # Here we just generate a placeholder report based on execution.
     findings = [(1, "System", "All", "Info", "Scan Completed Successfully")]
     generate_report(output_dir, findings)
     

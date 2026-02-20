@@ -2,3 +2,4 @@ rich
 pyyaml
 requests
 sqlite-utils
+jsonschema
