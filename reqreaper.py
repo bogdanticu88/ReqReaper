@@ -334,7 +334,9 @@ def run_demo(console):
     time.sleep(1)
     run_id = str(uuid.uuid4())
     console.print(f"[*] Initialization complete. Run ID: {run_id}")
-    console.print("[*] Target Scope: 2 hosts (https://api.example.com, https://example.com)")
+    console.print(
+        "[*] Target Scope: 2 hosts (https://api.example.com, https://example.com)"
+    )
     time.sleep(1)
 
     # Tool Availability Table
@@ -370,7 +372,9 @@ def run_demo(console):
                 console.print(f"[*] Skipping {name}: {notes}")
                 continue
 
-            task_id = progress.add_task(description=f"[*] Executing {name}...", total=None)
+            task_id = progress.add_task(
+                description=f"[*] Executing {name}...", total=None
+            )
             time.sleep(float(duration[:-1]))  # Simulate duration
             progress.update(task_id, description=f"[green][+] {name} completed[/]")
 
