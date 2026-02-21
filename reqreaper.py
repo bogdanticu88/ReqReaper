@@ -9,6 +9,7 @@ import shutil
 import uuid
 import time
 import logging
+import html
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -31,6 +32,7 @@ from modules.nuclei_module import NucleiModule
 from modules.sqlmap_module import SqlmapModule
 from modules.openapi_module import OpenApiModule
 from modules.stress_k6_module import StressK6Module
+from modules.jwt_module import JwtModule
 
 # Configuration Schema
 CONFIG_SCHEMA = {
@@ -229,6 +231,43 @@ def validate_config(config, logger):
     return True
 
 
+def select_modules(config, args):
+    """Returns (planned, skipped) based on config and CLI flags.
+
+    planned: list of module name strings
+    skipped: list of (module name, reason) tuples
+    """
+    planned = []
+    skipped = []
+
+    if config["modules"]["discovery"]["enabled"]:
+        planned.extend(["Discovery:HTTPX", "Discovery:Nmap"])
+    else:
+        skipped.append(("Discovery", "Disabled in config"))
+
+    if config["modules"]["vulnerability"]["enabled"]:
+        planned.extend(["Vulnerability:Nuclei", "Vulnerability:TLS", "Vulnerability:ZAP", "Vulnerability:JWT"])
+    else:
+        skipped.append(("Vulnerability", "Disabled in config"))
+
+    if args.enable_fuzz or (args.full and not args.safe):
+        planned.extend(["Fuzzing:Ffuf", "Fuzzing:Kiterunner"])
+    else:
+        skipped.append(("Fuzzing", "Flag not provided"))
+
+    if args.enable_sqli or (args.full and not args.safe):
+        planned.append("Injection:SQLMap")
+    else:
+        skipped.append(("Injection", "Flag not provided"))
+
+    if args.enable_load:
+        planned.append("Load:K6")
+    else:
+        skipped.append(("Load", "Flag not provided"))
+
+    return planned, skipped
+
+
 def preflight_tools_check(console, modules_config):
     """Checks for the presence of required external binaries."""
     table = Table(title="Preflight Tool Availability Check")
@@ -313,9 +352,11 @@ def generate_report(output_dir, db_path, run_id):
     rows_html = ""
     for f in findings:
         rows_html += (
-            f"<tr><td>{f['tool']}</td><td>{f['severity']}</td>"
-            f"<td>{f['title']}</td><td>{f['endpoint']}</td>"
-            f"<td>{f['evidence_path']}</td></tr>"
+            f"<tr><td>{html.escape(str(f['tool']))}</td>"
+            f"<td>{html.escape(str(f['severity']))}</td>"
+            f"<td>{html.escape(str(f['title']))}</td>"
+            f"<td>{html.escape(str(f['endpoint']))}</td>"
+            f"<td>{html.escape(str(f['evidence_path']))}</td></tr>"
         )
 
     final_html = html_template.format(
@@ -480,35 +521,7 @@ def main():
     tools_ok = preflight_tools_check(console, config["modules"])
 
     # 3. Dry-Run Logic
-    planned_modules = []
-    skipped_info = []
-
-    if config["modules"]["discovery"]["enabled"]:
-        planned_modules.extend(["Discovery:HTTPX", "Discovery:Nmap"])
-    else:
-        skipped_info.append(("Discovery", "Disabled in config"))
-
-    if config["modules"]["vulnerability"]["enabled"]:
-        planned_modules.extend(
-            ["Vulnerability:Nuclei", "Vulnerability:TLS", "Vulnerability:ZAP"]
-        )
-    else:
-        skipped_info.append(("Vulnerability", "Disabled in config"))
-
-    if args.enable_fuzz or (args.full and not args.safe):
-        planned_modules.extend(["Fuzzing:Ffuf", "Fuzzing:Kiterunner"])
-    else:
-        skipped_info.append(("Fuzzing", "Flag not provided"))
-
-    if args.enable_sqli or (args.full and not args.safe):
-        planned_modules.append("Injection:SQLMap")
-    else:
-        skipped_info.append(("Injection", "Flag not provided"))
-
-    if args.enable_load:
-        planned_modules.append("Load:K6")
-    else:
-        skipped_info.append(("Load", "Flag not provided"))
+    planned_modules, skipped_info = select_modules(config, args)
 
     if args.dry_run:
         plan_table = Table(title="Planned Module Execution (Dry-Run)", box=None)
@@ -574,40 +587,17 @@ def main():
         "Vulnerability:Nuclei": NucleiModule(config, output_dir, db_path),
         "Vulnerability:TLS": TLSModule(config, output_dir, db_path),
         "Vulnerability:ZAP": ZapModule(config, output_dir, db_path),
+        "Vulnerability:JWT": JwtModule(config, output_dir, db_path),
         "Fuzzing:Ffuf": FfufModule(config, output_dir, db_path),
         "Fuzzing:Kiterunner": KiterunnerModule(config, output_dir, db_path),
         "Injection:SQLMap": SqlmapModule(config, output_dir, db_path),
         "Load:K6": StressK6Module(config, output_dir, db_path),
     }
 
-    modules_to_run = []
-    # (Selection logic mirrored here for brevity in implementation)
-    if config["modules"]["discovery"]["enabled"]:
-        modules_to_run.extend(
-            [
-                ("Discovery:HTTPX", mod_instances["Discovery:HTTPX"]),
-                ("Discovery:Nmap", mod_instances["Discovery:Nmap"]),
-            ]
-        )
-    if config["modules"]["vulnerability"]["enabled"]:
-        modules_to_run.extend(
-            [
-                ("Vulnerability:Nuclei", mod_instances["Vulnerability:Nuclei"]),
-                ("Vulnerability:TLS", mod_instances["Vulnerability:TLS"]),
-                ("Vulnerability:ZAP", mod_instances["Vulnerability:ZAP"]),
-            ]
-        )
-    if args.enable_fuzz or (args.full and not args.safe):
-        modules_to_run.extend(
-            [
-                ("Fuzzing:Ffuf", mod_instances["Fuzzing:Ffuf"]),
-                ("Fuzzing:Kiterunner", mod_instances["Fuzzing:Kiterunner"]),
-            ]
-        )
-    if args.enable_sqli or (args.full and not args.safe):
-        modules_to_run.append(("Injection:SQLMap", mod_instances["Injection:SQLMap"]))
-    if args.enable_load:
-        modules_to_run.append(("Load:K6", mod_instances["Load:K6"]))
+    active_module_names, _ = select_modules(config, args)
+    modules_to_run = [
+        (name, mod_instances[name]) for name in active_module_names
+    ]
 
     for _, mod in mod_instances.items():
         mod.dm = dm

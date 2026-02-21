@@ -2,6 +2,9 @@ from abc import ABC, abstractmethod
 import subprocess
 import shutil
 import os
+import logging
+
+logger = logging.getLogger("reqreaper")
 
 
 class BaseModule(ABC):
@@ -24,17 +27,25 @@ class BaseModule(ABC):
         return shutil.which(self.required_tool) is not None
 
     def run_command(self, cmd, tool_name):
+        timeout = self.config.get("timeout", 60) * 10
         try:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=self.config.get("timeout", 60) * 10,
+                timeout=timeout,
             )
+            if result.returncode != 0 and result.stderr:
+                logger.debug(f"[{tool_name}] stderr: {result.stderr.strip()}")
             return result
         except subprocess.TimeoutExpired:
+            logger.warning(f"[{tool_name}] timed out after {timeout}s")
             return None
-        except Exception:
+        except FileNotFoundError:
+            logger.error(f"[{tool_name}] binary not found: {cmd[0]}")
+            return None
+        except Exception as e:
+            logger.error(f"[{tool_name}] unexpected error: {e}")
             return None
 
     @abstractmethod

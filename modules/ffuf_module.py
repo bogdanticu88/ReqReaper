@@ -8,6 +8,14 @@ class FfufModule(BaseModule):
         super().__init__(config, output_dir, db_path)
         self.required_tool = "ffuf"
 
+    def _auth_args(self):
+        auth = self.config.get("auth", {})
+        name = auth.get("header_name")
+        value = auth.get("header_value")
+        if name and value:
+            return ["-H", f"{name}: {value}"]
+        return []
+
     def run(self, targets, wordlist="/usr/share/wordlists/dirb/common.txt"):
         results = []
         for target in targets:
@@ -26,7 +34,7 @@ class FfufModule(BaseModule):
                 "json",
                 "-mc",
                 "200,301,302,401,403",
-            ]
+            ] + self._auth_args()
             self.run_command(cmd, "ffuf")
 
             if os.path.exists(output_file):

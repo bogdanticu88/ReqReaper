@@ -1,6 +1,22 @@
 from .base import BaseModule
 import json
+import logging
 import requests
+import yaml
+
+logger = logging.getLogger("reqreaper")
+
+
+def _parse_spec(content, content_type=""):
+    """Try JSON first, fall back to YAML."""
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    try:
+        return yaml.safe_load(content)
+    except yaml.YAMLError as e:
+        raise ValueError(f"Could not parse spec as JSON or YAML: {e}")
 
 
 class OpenApiModule(BaseModule):
@@ -13,18 +29,34 @@ class OpenApiModule(BaseModule):
             return "No OpenAPI source provided"
 
         spec = {}
+        timeout = self.config.get("timeout", 30)
+
         if url:
             try:
-                response = requests.get(url)
-                spec = response.json()
-            except Exception as e:
+                auth = self.config.get("auth", {})
+                headers = {}
+                if auth.get("header_name") and auth.get("header_value"):
+                    headers[auth["header_name"]] = auth["header_value"]
+                response = requests.get(url, timeout=timeout, headers=headers)
+                response.raise_for_status()
+                spec = _parse_spec(response.text, response.headers.get("content-type", ""))
+            except requests.RequestException as e:
+                logger.error(f"[openapi] Failed to fetch spec from {url}: {e}")
                 return f"Failed to fetch OpenAPI: {e}"
+            except ValueError as e:
+                logger.error(f"[openapi] {e}")
+                return str(e)
         elif file_path:
             try:
                 with open(file_path, "r") as f:
-                    spec = json.load(f)
-            except Exception as e:
+                    content = f.read()
+                spec = _parse_spec(content)
+            except OSError as e:
+                logger.error(f"[openapi] Failed to read file {file_path}: {e}")
                 return f"Failed to read OpenAPI file: {e}"
+            except ValueError as e:
+                logger.error(f"[openapi] {e}")
+                return str(e)
 
         endpoints = self.extract_endpoints(spec)
         self.parse_results(endpoints)

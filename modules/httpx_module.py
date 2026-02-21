@@ -8,6 +8,14 @@ class HttpxModule(BaseModule):
         super().__init__(config, output_dir, db_path)
         self.required_tool = "httpx"
 
+    def _auth_args(self):
+        auth = self.config.get("auth", {})
+        name = auth.get("header_name")
+        value = auth.get("header_value")
+        if name and value:
+            return ["-H", f"{name}: {value}"]
+        return []
+
     def run(self, targets):
         results = []
         for target in targets:
@@ -23,7 +31,7 @@ class HttpxModule(BaseModule):
                 "-json",
                 "-o",
                 output_file,
-            ]
+            ] + self._auth_args()
             self.run_command(cmd, "httpx")
 
             if os.path.exists(output_file):

@@ -8,6 +8,14 @@ class NucleiModule(BaseModule):
         super().__init__(config, output_dir, db_path)
         self.required_tool = "nuclei"
 
+    def _auth_args(self):
+        auth = self.config.get("auth", {})
+        name = auth.get("header_name")
+        value = auth.get("header_value")
+        if name and value:
+            return ["-H", f"{name}: {value}"]
+        return []
+
     def run(self, targets):
         results = []
         for target in targets:
@@ -15,7 +23,7 @@ class NucleiModule(BaseModule):
                 self.raw_output_dir, f"nuclei_{target.replace('/', '_')}.json"
             )
 
-            cmd = ["nuclei", "-u", target, "-json", "-o", output_file, "-silent"]
+            cmd = ["nuclei", "-u", target, "-json", "-o", output_file, "-silent"] + self._auth_args()
             self.run_command(cmd, "nuclei")
 
             if os.path.exists(output_file):

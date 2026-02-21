@@ -8,9 +8,6 @@ class SqlmapModule(BaseModule):
         self.required_tool = "sqlmap"
 
     def run(self, targets):
-        if not self.config.get("enable_sqli", False):
-            return "SQLi testing disabled"
-
         results = []
         for target in targets:
             output_dir = os.path.join(
