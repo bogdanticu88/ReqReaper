@@ -5,7 +5,7 @@ testing. It integrates industry-standard security tools into a unified workflow,
 providing standardized data models, normalized CSV exports, and comprehensive
 audit trails for authorized red-team engagements.
 
-By Bogdan Ticu
+
 
 ## Quickstart
 
